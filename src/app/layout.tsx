@@ -29,7 +29,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         <header className="site-header">
           <a href={homeHref} className="brand">
-            <span className="mark" aria-hidden="true" />
+            <img src="/igs-logo.png" alt="IGS" className="mark" />
             IGS Takshashila Academy
           </a>
           <nav>

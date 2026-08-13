@@ -25,6 +25,7 @@ export default function CertificateView({
         <div className="certificate-seal" aria-hidden="true">
           ✓
         </div>
+        <img src="/igs-logo.png" alt="IGS" className="certificate-logo" />
         <p className="certificate-kicker">IGS Takshashila Academy</p>
         <h1 className="certificate-title">Certificate of Completion</h1>
         <p className="certificate-lead">This certifies that</p>

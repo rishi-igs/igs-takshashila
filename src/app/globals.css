@@ -120,11 +120,10 @@ a {
 }
 
 .brand .mark {
-  width: 30px;
   height: 30px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--pink), var(--blue) 60%, var(--cyan));
+  width: auto;
   flex-shrink: 0;
+  object-fit: contain;
 }
 
 .site-header nav {
@@ -541,6 +540,13 @@ tr:hover td {
   padding: 3.5rem 3rem;
   text-align: center;
   background: linear-gradient(160deg, var(--background) 60%, var(--badge-deployment-bg) 140%);
+}
+
+.certificate-logo {
+  height: 56px;
+  width: auto;
+  margin: 0 auto 1.25rem;
+  display: block;
 }
 
 .certificate-seal {

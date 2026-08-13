@@ -52,13 +52,25 @@ function StatusControl({ assignmentId, status }: { assignmentId: string; status:
   );
 }
 
+function StatusPill({ status }: { status: ProgressStatus }) {
+  const cls = status === "DONE" ? "done" : status === "IN_PROGRESS" ? "in-progress" : "not-started";
+  const label = STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
+  return <span className={`badge status-pill ${cls}`}>{label}</span>;
+}
+
+// "none": no progress column at all. "editable": the viewer can change
+// status (their own curriculum). "readonly": show status without letting
+// the viewer change it (admin reviewing a learner).
+export type ProgressMode = "none" | "editable" | "readonly";
+
 export default function CurriculumTable({
   rowsByPillar,
-  editable,
+  progressMode = "none",
 }: {
   rowsByPillar: Map<Pillar, CurriculumRow[]>;
-  editable: boolean;
+  progressMode?: ProgressMode;
 }) {
+  const showProgressColumn = progressMode !== "none";
   return (
     <>
       {PILLAR_ORDER.filter((p) => rowsByPillar.has(p)).map((pillar) => {
@@ -81,7 +93,7 @@ export default function CurriculumTable({
                     <th>Hours</th>
                     <th>Standard / expectation</th>
                     <th>Learning</th>
-                    {editable && <th>Progress</th>}
+                    {showProgressColumn && <th>Progress</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -118,9 +130,13 @@ export default function CurriculumTable({
                           ) : null}
                         </div>
                       </td>
-                      {editable && (
+                      {showProgressColumn && (
                         <td>
-                          <StatusControl assignmentId={r.assignmentId} status={r.status ?? "NOT_STARTED"} />
+                          {progressMode === "editable" ? (
+                            <StatusControl assignmentId={r.assignmentId} status={r.status ?? "NOT_STARTED"} />
+                          ) : (
+                            <StatusPill status={r.status ?? "NOT_STARTED"} />
+                          )}
                         </td>
                       )}
                     </tr>

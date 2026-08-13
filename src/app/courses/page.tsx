@@ -1,7 +1,12 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import CourseBrowser from "@/components/CourseBrowser";
 
 export default async function CoursesPage() {
+  const user = await getCurrentUser();
+  if (user && user.role === "LEARNER") redirect("/my-progress");
+
   const courses = await prisma.course.findMany({
     include: { pillars: true },
     orderBy: { name: "asc" },

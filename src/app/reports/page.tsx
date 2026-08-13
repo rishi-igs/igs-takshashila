@@ -159,7 +159,9 @@ export default async function ReportsPage() {
             <tbody>
               {learnerRows.map((r) => (
                 <tr key={r.id}>
-                  <td>{r.name}</td>
+                  <td>
+                    <a href={`/admin/learners/${r.id}`}>{r.name}</a>
+                  </td>
                   <td>{r.designation}</td>
                   <td>
                     {r.done} / {r.total}

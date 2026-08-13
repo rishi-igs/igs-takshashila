@@ -39,6 +39,10 @@ export default async function AdminHome({
         </div>
       </div>
       <div className="card-grid" style={{ marginTop: "1.5rem" }}>
+        <a className="card" href="/admin/learners">
+          <div className="name">Learners</div>
+          <div className="meta">Create accounts, review individual performance</div>
+        </a>
         <a className="card" href="/admin/courses">
           <div className="name">Manage courses</div>
           <div className="meta">Edit links, validation status, notes</div>

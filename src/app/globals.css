@@ -342,6 +342,22 @@ select:focus {
   color: var(--badge-choose-fg);
 }
 
+.status-pill.not-started {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.status-pill.in-progress {
+  background: var(--badge-deployment-bg);
+  color: var(--badge-deployment-fg);
+}
+
+.status-pill.done {
+  background: var(--badge-choose-bg);
+  color: var(--badge-choose-fg);
+}
+
 /* ---------- stats ---------- */
 
 .stats-row {
@@ -434,6 +450,86 @@ tr:hover td {
 
 .muted {
   color: var(--muted);
+}
+
+/* ---------- assessment ---------- */
+
+.exam {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.exam-header {
+  position: sticky;
+  top: 72px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 1.1rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--card-shadow);
+}
+
+.exam-timer {
+  font-size: 1.3rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.exam-timer.low {
+  color: var(--primary);
+}
+
+.exam-question {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 0.85rem;
+  background: var(--background);
+}
+
+.exam-question-text {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.exam-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.exam-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+
+.exam-option:hover {
+  border-color: var(--accent);
+}
+
+.exam-option.selected {
+  border-color: var(--accent);
+  background: var(--badge-deployment-bg);
+}
+
+code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9em;
 }
 
 .empty-state {

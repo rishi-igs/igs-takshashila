@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { slugify } from "@/lib/slug";
@@ -13,6 +13,11 @@ export default async function CurriculumPage({
   const { slug } = await params;
 
   const [designations, user] = await Promise.all([prisma.designation.findMany(), getCurrentUser()]);
+
+  // Learners get one dashboard — their own curriculum lives at /my-progress,
+  // with editing built in. Browsing other designations isn't essential to them.
+  if (user && user.role === "LEARNER") redirect("/my-progress");
+
   const designation = designations.find((d) => slugify(d.name) === slug);
   if (!designation) notFound();
 
@@ -80,7 +85,7 @@ export default async function CurriculumPage({
         </div>
       </div>
 
-      <CurriculumTable rowsByPillar={byPillar} editable={editable} />
+      <CurriculumTable rowsByPillar={byPillar} progressMode={editable ? "editable" : "none"} />
     </>
   );
 }

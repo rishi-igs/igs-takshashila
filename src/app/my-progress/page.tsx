@@ -1,12 +1,17 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import type { Pillar } from "@/generated/prisma/enums";
-import CurriculumTable, { type CurriculumRow } from "@/components/CurriculumTable";
+import { getLearnerCurriculum } from "@/lib/learner-curriculum";
+import CurriculumTable from "@/components/CurriculumTable";
+import LearnerProgressStats from "@/components/LearnerProgressStats";
 
 export default async function MyProgressPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+
+  const activeAssessment = await prisma.assessment.findFirst({
+    where: { learnerId: user.id, status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
+  });
 
   if (!user.designationId || !user.designation) {
     return (
@@ -22,42 +27,10 @@ export default async function MyProgressPage() {
     );
   }
 
-  const assignments = await prisma.assignment.findMany({
-    where: { designationId: user.designationId },
-    include: { module: true, progress: { where: { userId: user.id } } },
-  });
-
-  const byPillar = new Map<Pillar, CurriculumRow[]>();
-  for (const a of assignments) {
-    const row: CurriculumRow = {
-      assignmentId: a.id,
-      moduleName: a.module.name,
-      moduleCode: a.module.code,
-      requirement: a.requirement,
-      hours: a.hours,
-      standard: a.module.standard,
-      freeLearning: a.freeLearning,
-      freeLink: a.freeLink,
-      premiumLearning: a.premiumLearning,
-      premiumLink: a.premiumLink,
-      status: (a.progress[0]?.status as CurriculumRow["status"]) ?? "NOT_STARTED",
-    };
-    const list = byPillar.get(a.module.pillar) ?? [];
-    list.push(row);
-    byPillar.set(a.module.pillar, list);
-  }
-  for (const list of byPillar.values()) {
-    list.sort((a, b) => a.moduleName.localeCompare(b.moduleName));
-  }
-
-  const total = assignments.length;
-  const done = assignments.filter((a) => a.progress[0]?.status === "DONE").length;
-  const inProgress = assignments.filter((a) => a.progress[0]?.status === "IN_PROGRESS").length;
-  const doneHours = assignments
-    .filter((a) => a.progress[0]?.status === "DONE")
-    .reduce((sum, a) => sum + a.hours, 0);
-  const totalHours = assignments.reduce((sum, a) => sum + a.hours, 0);
-  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const { byPillar, total, done, inProgress, doneHours, totalHours, pct } = await getLearnerCurriculum(
+    user.id,
+    user.designationId
+  );
 
   return (
     <>
@@ -66,33 +39,26 @@ export default async function MyProgressPage() {
         {user.designation.name} · {user.designation.roleStage}
       </p>
 
-      <div className="stats-row">
-        <div className="stat">
-          <div className="value">{pct}%</div>
-          <div className="label">Modules complete</div>
+      {activeAssessment && (
+        <div className="form-note">
+          <strong>You have an assessment to complete</strong> — 25 questions, 20 minutes, based on
+          your curriculum.{" "}
+          <a href="/assessment" style={{ fontWeight: 700 }}>
+            {activeAssessment.status === "IN_PROGRESS" ? "Resume it" : "Start it"} →
+          </a>
         </div>
-        <div className="stat">
-          <div className="value">
-            {done} / {total}
-          </div>
-          <div className="label">Done / total modules</div>
-        </div>
-        <div className="stat">
-          <div className="value">{inProgress}</div>
-          <div className="label">In progress</div>
-        </div>
-        <div className="stat">
-          <div className="value">
-            {doneHours} / {totalHours}
-          </div>
-          <div className="label">Hours completed</div>
-        </div>
-      </div>
-      <div className="progress-bar" style={{ marginBottom: "1.5rem" }}>
-        <div className="fill" style={{ width: `${pct}%` }} />
-      </div>
+      )}
 
-      <CurriculumTable rowsByPillar={byPillar} editable />
+      <LearnerProgressStats
+        pct={pct}
+        done={done}
+        total={total}
+        inProgress={inProgress}
+        doneHours={doneHours}
+        totalHours={totalHours}
+      />
+
+      <CurriculumTable rowsByPillar={byPillar} progressMode="editable" />
     </>
   );
 }

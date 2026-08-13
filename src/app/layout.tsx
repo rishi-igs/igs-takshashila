@@ -21,23 +21,36 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const user = await getCurrentUser();
+  const isLearner = user?.role === "LEARNER";
+  const homeHref = isLearner ? "/my-progress" : "/";
 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         <header className="site-header">
-          <a href="/" className="brand">
+          <a href={homeHref} className="brand">
             <span className="mark" aria-hidden="true" />
             IGS Takshashila Academy
           </a>
           <nav>
-            <a href="/">Curriculum</a>
-            <a href="/courses">Course Library</a>
-            {user ? (
+            {isLearner ? (
               <>
+                <a href="/my-progress">My Learning</a>
+                <a href="/account">Account</a>
+                <form action={logoutAction} style={{ display: "inline" }}>
+                  <button type="submit" className="secondary">
+                    Log out
+                  </button>
+                </form>
+              </>
+            ) : user ? (
+              <>
+                <a href="/">Curriculum</a>
+                <a href="/courses">Course Library</a>
                 <a href="/my-progress">My Progress</a>
                 <a href="/account">Account</a>
                 {user.role === "ADMIN" && <a href="/admin">Admin</a>}
+                {user.role === "ADMIN" && <a href="/admin/learners">Learners</a>}
                 {user.role === "ADMIN" && <a href="/reports">Reports</a>}
                 <form action={logoutAction} style={{ display: "inline" }}>
                   <button type="submit" className="secondary">
@@ -47,9 +60,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </>
             ) : (
               <>
-                <a href="/login">Log in</a>
-                <a href="/signup" className="button">
-                  Sign up
+                <a href="/">Curriculum</a>
+                <a href="/courses">Course Library</a>
+                <a href="/login" className="button">
+                  Log in
                 </a>
               </>
             )}

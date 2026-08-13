@@ -92,3 +92,45 @@ export async function requireAdminPage() {
   if (user.role !== "ADMIN") redirect("/");
   return user;
 }
+
+// Avoids visually ambiguous characters (0/O, 1/l/I) since this gets
+// read off a screen and typed in by hand.
+const PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+
+export function generateTempPassword(length = 12): string {
+  const bytes = crypto.randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += PASSWORD_CHARS[bytes[i] % PASSWORD_CHARS.length];
+  }
+  return out;
+}
+
+const FLASH_CREDENTIALS_COOKIE = "lms_flash_credentials";
+
+// Carries a just-generated password from the create-learner action to the
+// confirmation page without putting it in the URL (browser history, server
+// logs). Short-lived and scoped to /admin so it naturally disappears —
+// cookies can only be *written* from a Server Action, not a page render, so
+// this is read-only on the page side rather than delete-on-read.
+export async function setFlashCredentials(email: string, password: string) {
+  const jar = await cookies();
+  jar.set(FLASH_CREDENTIALS_COOKIE, JSON.stringify({ email, password }), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/admin",
+    maxAge: 90,
+  });
+}
+
+export async function readFlashCredentials(): Promise<{ email: string; password: string } | null> {
+  const jar = await cookies();
+  const raw = jar.get(FLASH_CREDENTIALS_COOKIE)?.value;
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}

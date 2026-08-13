@@ -1,7 +1,13 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import DesignationBrowser from "@/components/DesignationBrowser";
 
 export default async function HomePage() {
+  const user = await getCurrentUser();
+  // Learners have one dashboard — the org-wide explorer isn't essential to them.
+  if (user && user.role === "LEARNER") redirect("/my-progress");
+
   const [designations, hoursAgg] = await Promise.all([
     prisma.designation.findMany({ orderBy: { name: "asc" } }),
     prisma.assignment.groupBy({

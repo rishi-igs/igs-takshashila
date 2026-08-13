@@ -29,6 +29,12 @@ enum ProgressStatus {
   DONE
 }
 
+enum AssessmentStatus {
+  ASSIGNED // generated, waiting for the learner to open it
+  IN_PROGRESS // opened — timer is running, server-side deadline set
+  SUBMITTED // graded — by the learner, by the timer, or by repeated cheat flags
+}
+
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -41,6 +47,7 @@ model User {
 
   designation Designation? @relation(fields: [designationId], references: [id])
   progress    Progress[]
+  assessments Assessment[]
 }
 
 // One row per learner x assignment — completion tracking
@@ -59,6 +66,57 @@ model Progress {
   @@unique([userId, assignmentId])
   @@index([userId])
   @@index([assignmentId])
+}
+
+// A 25-question, 20-minute assessment generated from the learner's own
+// curriculum. One row per attempt — admin can send a new one after a
+// previous one is SUBMITTED, which generates a fresh random question set.
+model Assessment {
+  id              String            @id @default(cuid())
+  learnerId       String
+  assignedById    String
+  status          AssessmentStatus  @default(ASSIGNED)
+  durationMinutes Int               @default(20)
+  createdAt       DateTime          @default(now())
+  startedAt       DateTime?
+  expiresAt       DateTime?
+  submittedAt     DateTime?
+  score           Int?
+  totalQuestions  Int               @default(25)
+  autoSubmitted   Boolean           @default(false) // true if ended by timer or cheat flags, not a manual submit
+
+  learner   User                 @relation(fields: [learnerId], references: [id])
+  questions AssessmentQuestion[]
+  events    AssessmentEvent[]
+
+  @@index([learnerId])
+}
+
+model AssessmentQuestion {
+  id              String  @id @default(cuid())
+  assessmentId    String
+  order           Int
+  questionText    String
+  optionsJson     String // JSON-encoded array of 4 option strings
+  correctIndex    Int
+  selectedIndex   Int? // learner's answer, null until submitted
+  sourceModuleCode String // which module this question was drawn from
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+
+  @@index([assessmentId])
+}
+
+// Anti-cheat signal log: tab-switch, fullscreen exit, copy/paste attempts, etc.
+model AssessmentEvent {
+  id           String   @id @default(cuid())
+  assessmentId String
+  type         String
+  createdAt    DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+
+  @@index([assessmentId])
 }
 
 model Designation {

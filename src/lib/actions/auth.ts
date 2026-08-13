@@ -8,10 +8,16 @@ function fail(page: "signup" | "login", message: string): never {
   redirect(`/${page}?error=${encodeURIComponent(message)}`);
 }
 
+// Signup only ever creates the first (admin) account — once any account
+// exists, every learner is provisioned by an admin instead. See
+// createLearnerAction in lib/actions/admin.ts.
 export async function signupAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   const name = String(formData.get("name") || "").trim();
+
+  const userCount = await prisma.user.count();
+  if (userCount > 0) redirect("/login");
 
   if (!email || !password || !name) fail("signup", "All fields are required.");
   if (password.length < 8) fail("signup", "Password must be at least 8 characters.");
@@ -19,7 +25,6 @@ export async function signupAction(formData: FormData) {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) fail("signup", "An account with that email already exists.");
 
-  const userCount = await prisma.user.count();
   const { hash, salt } = hashPassword(password);
 
   const user = await prisma.user.create({
@@ -28,13 +33,12 @@ export async function signupAction(formData: FormData) {
       name,
       passwordHash: hash,
       passwordSalt: salt,
-      // First account in the system becomes admin — there's no seeded admin otherwise.
-      role: userCount === 0 ? "ADMIN" : "LEARNER",
+      role: "ADMIN",
     },
   });
 
   await setSessionCookie(user.id);
-  redirect("/account");
+  redirect("/admin");
 }
 
 export async function loginAction(formData: FormData) {
@@ -47,7 +51,7 @@ export async function loginAction(formData: FormData) {
   }
 
   await setSessionCookie(user.id);
-  redirect("/my-progress");
+  redirect(user.role === "ADMIN" ? "/admin" : "/my-progress");
 }
 
 export async function logoutAction() {

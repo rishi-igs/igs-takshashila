@@ -3,8 +3,98 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, hashPassword, generateTempPassword, setFlashCredentials } from "@/lib/auth";
+import { generateAssessmentQuestions } from "@/lib/assessment-generator";
 import type { Pillar } from "@/generated/prisma/enums";
+
+export async function createAssessmentAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const learnerId = String(formData.get("learnerId") || "");
+
+  const learner = await prisma.user.findUnique({ where: { id: learnerId } });
+  if (!learner || learner.role !== "LEARNER" || !learner.designationId) {
+    redirect("/admin/learners?error=" + encodeURIComponent("Learner not found or has no designation."));
+  }
+
+  const existingActive = await prisma.assessment.findFirst({
+    where: { learnerId, status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
+  });
+  if (existingActive) {
+    redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("This learner already has a pending assessment."));
+  }
+
+  const [total, done] = await Promise.all([
+    prisma.assignment.count({ where: { designationId: learner.designationId } }),
+    prisma.progress.count({
+      where: { userId: learnerId, status: "DONE", assignment: { designationId: learner.designationId } },
+    }),
+  ]);
+  if (total === 0 || done < total) {
+    redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("Learner hasn't completed their curriculum yet."));
+  }
+
+  const questions = await generateAssessmentQuestions(learner.designationId, 25);
+  if (questions.length < 5) {
+    redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("Not enough curriculum content to build an assessment."));
+  }
+
+  await prisma.assessment.create({
+    data: {
+      learnerId,
+      assignedById: admin.id,
+      totalQuestions: questions.length,
+      questions: {
+        create: questions.map((q) => ({
+          order: q.order,
+          questionText: q.questionText,
+          optionsJson: JSON.stringify(q.options),
+          correctIndex: q.correctIndex,
+          sourceModuleCode: q.sourceModuleCode,
+        })),
+      },
+    },
+  });
+
+  revalidatePath(`/admin/learners/${learnerId}`);
+  revalidatePath("/admin/learners");
+  redirect(`/admin/learners/${learnerId}?assessmentSent=1`);
+}
+
+export async function createLearnerAction(formData: FormData) {
+  await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const designationId = String(formData.get("designationId") || "").trim();
+
+  if (!name || !email) {
+    redirect("/admin/learners/new?error=" + encodeURIComponent("Name and email are required."));
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    redirect(
+      "/admin/learners/new?error=" + encodeURIComponent("An account with that email already exists.")
+    );
+  }
+
+  const password = generateTempPassword();
+  const { hash, salt } = hashPassword(password);
+
+  const user = await prisma.user.create({
+    data: {
+      name,
+      email,
+      passwordHash: hash,
+      passwordSalt: salt,
+      role: "LEARNER",
+      designationId: designationId || null,
+    },
+  });
+
+  await setFlashCredentials(email, password);
+  revalidatePath("/admin/learners");
+  redirect(`/admin/learners/${user.id}?created=1`);
+}
 
 export async function updateCourseAction(formData: FormData) {
   await requireAdmin();

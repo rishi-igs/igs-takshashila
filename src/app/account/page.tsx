@@ -12,8 +12,6 @@ export default async function AccountPage({
   if (!user) redirect("/login");
   const { error } = await searchParams;
 
-  const designations = await prisma.designation.findMany({ orderBy: { name: "asc" } });
-
   return (
     <div className="auth-form">
       <h1>Account</h1>
@@ -24,18 +22,34 @@ export default async function AccountPage({
       {error && <p className="form-error">{error}</p>}
 
       <p style={{ marginBottom: "0.4rem" }}>
-        Current designation:{" "}
-        <strong>{user.designation ? user.designation.name : "Not set"}</strong>
-      </p>
-      <p className="muted" style={{ marginBottom: "1rem" }}>
-        Your designation determines the curriculum shown on your My Progress page. You can change
-        it anytime.
+        Designation: <strong>{user.designation ? user.designation.name : "Not set"}</strong>
       </p>
 
+      {user.designationId ? (
+        <p className="muted" style={{ marginBottom: "1rem" }}>
+          Your designation is fixed and can&apos;t be changed here — contact your admin if it needs
+          to be updated.
+        </p>
+      ) : (
+        <DesignationPicker />
+      )}
+    </div>
+  );
+}
+
+async function DesignationPicker() {
+  const designations = await prisma.designation.findMany({ orderBy: { name: "asc" } });
+
+  return (
+    <>
+      <p className="muted" style={{ marginBottom: "1rem" }}>
+        No designation set yet — pick one to see your curriculum on My Progress. Once saved, it's
+        fixed.
+      </p>
       <form action={setDesignationAction}>
         <label>
           Designation
-          <select name="designationId" defaultValue={user.designationId ?? ""}>
+          <select name="designationId" defaultValue="">
             <option value="" disabled>
               Select a designation...
             </option>
@@ -48,6 +62,6 @@ export default async function AccountPage({
         </label>
         <button type="submit">Save designation</button>
       </form>
-    </div>
+    </>
   );
 }

@@ -10,17 +10,19 @@ export default async function AdminLearnerDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string; assessmentSent?: string; error?: string }>;
+  searchParams: Promise<{ created?: string; assessmentSent?: string; certificateIssued?: string; error?: string }>;
 }) {
   await requireAdminPage();
   const { id } = await params;
-  const { created, assessmentSent, error } = await searchParams;
+  const { created, assessmentSent, certificateIssued, error } = await searchParams;
 
-  const [learner, assessments] = await Promise.all([
+  const [learner, assessments, certificates] = await Promise.all([
     prisma.user.findUnique({ where: { id }, include: { designation: true } }),
     prisma.assessment.findMany({ where: { learnerId: id }, orderBy: { createdAt: "desc" } }),
+    prisma.certificate.findMany({ where: { learnerId: id }, orderBy: { issuedAt: "desc" } }),
   ]);
   if (!learner || learner.role !== "LEARNER") notFound();
+  const certificateByAssessmentId = new Map(certificates.map((c) => [c.assessmentId, c]));
 
   const credentials = created ? await readFlashCredentials() : null;
 
@@ -34,6 +36,15 @@ export default async function AdminLearnerDetailPage({
 
       {error && <p className="form-error">{error}</p>}
       {assessmentSent && <p className="form-note">Assessment sent — the learner will see it on their My Learning page.</p>}
+      {certificateIssued && (
+        <p className="form-note">
+          Certificate issued —{" "}
+          <a href={`/certificate/${certificateIssued}`} style={{ fontWeight: 700 }}>
+            view it
+          </a>
+          . The learner will see it on their My Learning page too.
+        </p>
+      )}
 
       {credentials && credentials.email === learner.email && (
         <div className="form-note">
@@ -56,18 +67,29 @@ export default async function AdminLearnerDetailPage({
                   <th>Sent</th>
                   <th>Status</th>
                   <th>Score</th>
+                  <th>Certificate</th>
                 </tr>
               </thead>
               <tbody>
-                {assessments.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.createdAt.toLocaleString()}</td>
-                    <td>
-                      {a.status === "SUBMITTED" ? (a.autoSubmitted ? "Auto-submitted" : "Submitted") : a.status}
-                    </td>
-                    <td>{a.status === "SUBMITTED" ? `${a.score} / ${a.totalQuestions}` : <span className="muted">—</span>}</td>
-                  </tr>
-                ))}
+                {assessments.map((a) => {
+                  const cert = certificateByAssessmentId.get(a.id);
+                  return (
+                    <tr key={a.id}>
+                      <td>{a.createdAt.toLocaleString()}</td>
+                      <td>
+                        {a.status === "SUBMITTED" ? (a.autoSubmitted ? "Auto-submitted" : "Submitted") : a.status}
+                      </td>
+                      <td>{a.status === "SUBMITTED" ? `${a.score} / ${a.totalQuestions}` : <span className="muted">—</span>}</td>
+                      <td>
+                        {cert ? (
+                          <a href={`/certificate/${cert.id}`}>View</a>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

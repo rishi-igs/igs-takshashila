@@ -1,11 +1,65 @@
 "use server";
 
+import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireAdmin, hashPassword, generateTempPassword, setFlashCredentials } from "@/lib/auth";
 import { generateAssessmentQuestions } from "@/lib/assessment-generator";
+import { CERTIFICATE_PASS_SCORE } from "@/lib/certificate";
 import type { Pillar } from "@/generated/prisma/enums";
+
+function generateCertificateNumber(): string {
+  const random = crypto.randomBytes(4).toString("hex").toUpperCase();
+  return `IGS-${new Date().getFullYear()}-${random}`;
+}
+
+export async function issueCertificateAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const learnerId = String(formData.get("learnerId") || "");
+
+  const learner = await prisma.user.findUnique({ where: { id: learnerId }, include: { designation: true } });
+  if (!learner || learner.role !== "LEARNER" || !learner.designation) {
+    redirect("/admin/learners?error=" + encodeURIComponent("Learner not found or has no designation."));
+  }
+
+  const latestAssessment = await prisma.assessment.findFirst({
+    where: { learnerId, status: "SUBMITTED" },
+    orderBy: { createdAt: "desc" },
+    include: { certificate: true },
+  });
+
+  if (!latestAssessment || (latestAssessment.score ?? 0) < CERTIFICATE_PASS_SCORE) {
+    redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent(`Learner needs a score of at least ${CERTIFICATE_PASS_SCORE} to qualify.`));
+  }
+  if (latestAssessment.certificate) {
+    redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("A certificate was already issued for this assessment."));
+  }
+
+  let certificateNumber = generateCertificateNumber();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const clash = await prisma.certificate.findUnique({ where: { certificateNumber } });
+    if (!clash) break;
+    certificateNumber = generateCertificateNumber();
+  }
+
+  const certificate = await prisma.certificate.create({
+    data: {
+      learnerId,
+      assessmentId: latestAssessment.id,
+      issuedById: admin.id,
+      certificateNumber,
+      learnerName: learner.name,
+      designationName: learner.designation.name,
+      score: latestAssessment.score ?? 0,
+      totalQuestions: latestAssessment.totalQuestions,
+    },
+  });
+
+  revalidatePath("/admin/learners");
+  revalidatePath(`/admin/learners/${learnerId}`);
+  redirect(`/admin/learners/${learnerId}?certificateIssued=${certificate.id}`);
+}
 
 export async function createAssessmentAction(formData: FormData) {
   const admin = await requireAdmin();

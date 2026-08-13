@@ -45,9 +45,10 @@ model User {
   designationId String?
   createdAt     DateTime @default(now())
 
-  designation Designation? @relation(fields: [designationId], references: [id])
-  progress    Progress[]
-  assessments Assessment[]
+  designation  Designation?  @relation(fields: [designationId], references: [id])
+  progress     Progress[]
+  assessments  Assessment[]
+  certificates Certificate[]
 }
 
 // One row per learner x assignment — completion tracking
@@ -85,9 +86,31 @@ model Assessment {
   totalQuestions  Int               @default(25)
   autoSubmitted   Boolean           @default(false) // true if ended by timer or cheat flags, not a manual submit
 
-  learner   User                 @relation(fields: [learnerId], references: [id])
-  questions AssessmentQuestion[]
-  events    AssessmentEvent[]
+  learner     User                 @relation(fields: [learnerId], references: [id])
+  questions   AssessmentQuestion[]
+  events      AssessmentEvent[]
+  certificate Certificate?
+
+  @@index([learnerId])
+}
+
+// Issued once an admin confirms a learner's assessment score clears the bar.
+// Snapshots name/designation/score at issue time so the certificate stays
+// accurate even if that data changes later.
+model Certificate {
+  id                String   @id @default(cuid())
+  learnerId         String
+  assessmentId      String   @unique
+  issuedById        String
+  certificateNumber String   @unique
+  learnerName       String
+  designationName   String
+  score             Int
+  totalQuestions    Int
+  issuedAt          DateTime @default(now())
+
+  learner    User       @relation(fields: [learnerId], references: [id])
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
 
   @@index([learnerId])
 }

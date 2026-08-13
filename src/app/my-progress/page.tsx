@@ -9,9 +9,12 @@ export default async function MyProgressPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const activeAssessment = await prisma.assessment.findFirst({
-    where: { learnerId: user.id, status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
-  });
+  const [activeAssessment, latestCertificate] = await Promise.all([
+    prisma.assessment.findFirst({
+      where: { learnerId: user.id, status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
+    }),
+    prisma.certificate.findFirst({ where: { learnerId: user.id }, orderBy: { issuedAt: "desc" } }),
+  ]);
 
   if (!user.designationId || !user.designation) {
     return (
@@ -38,6 +41,15 @@ export default async function MyProgressPage() {
       <p className="subtitle">
         {user.designation.name} · {user.designation.roleStage}
       </p>
+
+      {latestCertificate && (
+        <div className="form-note">
+          <strong>Your certificate is ready.</strong>{" "}
+          <a href={`/certificate/${latestCertificate.id}`} style={{ fontWeight: 700 }}>
+            View / download it →
+          </a>
+        </div>
+      )}
 
       {activeAssessment && (
         <div className="form-note">

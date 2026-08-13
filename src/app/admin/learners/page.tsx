@@ -1,11 +1,12 @@
 import { requireAdminPage } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { createAssessmentAction } from "@/lib/actions/admin";
+import { createAssessmentAction, issueCertificateAction } from "@/lib/actions/admin";
+import { CERTIFICATE_PASS_SCORE } from "@/lib/certificate";
 
 export default async function AdminLearnersPage() {
   await requireAdminPage();
 
-  const [learners, assignmentCounts, doneCounts, activeAssessments] = await Promise.all([
+  const [learners, assignmentCounts, doneCounts, activeAssessments, submittedAssessments] = await Promise.all([
     prisma.user.findMany({
       where: { role: "LEARNER" },
       include: { designation: true },
@@ -17,11 +18,22 @@ export default async function AdminLearnersPage() {
       where: { status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
       select: { learnerId: true },
     }),
+    prisma.assessment.findMany({
+      where: { status: "SUBMITTED" },
+      orderBy: { createdAt: "desc" },
+      include: { certificate: true },
+    }),
   ]);
 
   const totalByDesignation = new Map(assignmentCounts.map((a) => [a.designationId, a._count._all]));
   const doneByUser = new Map(doneCounts.map((d) => [d.userId, d._count._all]));
   const hasActiveAssessment = new Set(activeAssessments.map((a) => a.learnerId));
+
+  // First (most recent, since already ordered desc) submitted assessment per learner.
+  const latestAssessmentByLearner = new Map<string, (typeof submittedAssessments)[number]>();
+  for (const a of submittedAssessments) {
+    if (!latestAssessmentByLearner.has(a.learnerId)) latestAssessmentByLearner.set(a.learnerId, a);
+  }
 
   return (
     <>
@@ -46,6 +58,7 @@ export default async function AdminLearnersPage() {
                 <th>Progress</th>
                 <th></th>
                 <th></th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -55,6 +68,9 @@ export default async function AdminLearnersPage() {
                 const pct = total === 0 ? 0 : Math.round((done / total) * 100);
                 const complete = total > 0 && done >= total;
                 const pending = hasActiveAssessment.has(l.id);
+                const latestAssessment = latestAssessmentByLearner.get(l.id);
+                const eligibleForCertificate =
+                  latestAssessment && (latestAssessment.score ?? 0) >= CERTIFICATE_PASS_SCORE;
                 return (
                   <tr key={l.id}>
                     <td>
@@ -91,6 +107,27 @@ export default async function AdminLearnersPage() {
                       ) : (
                         <span className="muted" style={{ fontSize: "0.85rem" }}>
                           Complete curriculum first
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {latestAssessment?.certificate ? (
+                        <a href={`/certificate/${latestAssessment.certificate.id}`}>View certificate</a>
+                      ) : eligibleForCertificate ? (
+                        <form action={issueCertificateAction}>
+                          <input type="hidden" name="learnerId" value={l.id} />
+                          <button type="submit" className="secondary">
+                            Issue certificate
+                          </button>
+                        </form>
+                      ) : latestAssessment ? (
+                        <span className="muted" style={{ fontSize: "0.85rem" }}>
+                          Score {latestAssessment.score}/{latestAssessment.totalQuestions} — needs{" "}
+                          {CERTIFICATE_PASS_SCORE}+
+                        </span>
+                      ) : (
+                        <span className="muted" style={{ fontSize: "0.85rem" }}>
+                          —
                         </span>
                       )}
                     </td>

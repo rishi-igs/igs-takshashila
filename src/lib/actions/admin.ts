@@ -1,0 +1,116 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { requireAdmin } from "@/lib/auth";
+import type { Pillar } from "@/generated/prisma/enums";
+
+export async function updateCourseAction(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const directLink = String(formData.get("directLink") || "").trim();
+  const validationStatus = String(formData.get("validationStatus") || "").trim();
+  const qualityNote = String(formData.get("qualityNote") || "").trim();
+
+  await prisma.course.update({
+    where: { id },
+    data: {
+      directLink: directLink || null,
+      validationStatus,
+      qualityNote: qualityNote || null,
+    },
+  });
+
+  revalidatePath("/admin/courses");
+  revalidatePath("/courses");
+  redirect("/admin/courses?saved=1");
+}
+
+export async function createDesignationAction(formData: FormData) {
+  await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const roleStage = String(formData.get("roleStage") || "").trim();
+  const jobFamily = String(formData.get("jobFamily") || "").trim();
+
+  if (!name || !roleStage || !jobFamily) {
+    redirect("/admin/designations/new?error=" + encodeURIComponent("All fields are required."));
+  }
+
+  const existing = await prisma.designation.findUnique({ where: { name } });
+  if (existing) {
+    redirect(
+      "/admin/designations/new?error=" +
+        encodeURIComponent("A designation with that name already exists.")
+    );
+  }
+
+  await prisma.designation.create({ data: { id: name, name, roleStage, jobFamily } });
+  revalidatePath("/");
+  redirect("/admin?saved=designation");
+}
+
+export async function createModuleAction(formData: FormData) {
+  await requireAdmin();
+  const code = String(formData.get("code") || "").trim();
+  const pillar = String(formData.get("pillar") || "") as Pillar;
+  const name = String(formData.get("name") || "").trim();
+  const capabilityTopics = String(formData.get("capabilityTopics") || "").trim();
+  const practicalOutput = String(formData.get("practicalOutput") || "").trim();
+  const standard = String(formData.get("standard") || "").trim();
+
+  if (!code || !pillar || !name) {
+    redirect("/admin/modules/new?error=" + encodeURIComponent("Code, pillar and name are required."));
+  }
+
+  const existing = await prisma.module.findUnique({ where: { code } });
+  if (existing) {
+    redirect(
+      "/admin/modules/new?error=" + encodeURIComponent("A module with that code already exists.")
+    );
+  }
+
+  await prisma.module.create({
+    data: { code, pillar, name, capabilityTopics, practicalOutput, standard },
+  });
+  redirect("/admin?saved=module");
+}
+
+export async function createAssignmentAction(formData: FormData) {
+  await requireAdmin();
+  const designationId = String(formData.get("designationId") || "");
+  const moduleCode = String(formData.get("moduleCode") || "");
+  const requirement = String(formData.get("requirement") || "").trim();
+  const hours = parseInt(String(formData.get("hours") || "0"), 10) || 0;
+
+  if (!designationId || !moduleCode || !requirement) {
+    redirect(
+      "/admin/assignments/new?error=" +
+        encodeURIComponent("Designation, module and requirement are required.")
+    );
+  }
+
+  const existing = await prisma.assignment.findFirst({ where: { designationId, moduleCode } });
+  if (existing) {
+    redirect(
+      "/admin/assignments/new?error=" +
+        encodeURIComponent("This designation is already assigned that module.")
+    );
+  }
+
+  await prisma.assignment.create({
+    data: {
+      designationId,
+      moduleCode,
+      requirement,
+      hours,
+      freeLearning: String(formData.get("freeLearning") || "").trim() || null,
+      freeLink: String(formData.get("freeLink") || "").trim() || null,
+      premiumLearning: String(formData.get("premiumLearning") || "").trim() || null,
+      premiumLink: String(formData.get("premiumLink") || "").trim() || null,
+    },
+  });
+
+  revalidatePath("/curriculum/[slug]", "page");
+  redirect("/admin?saved=assignment");
+}

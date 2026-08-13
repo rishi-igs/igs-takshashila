@@ -1,69 +1,53 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import { prisma } from "@/lib/db";
+import DesignationBrowser from "@/components/DesignationBrowser";
 
-export default function Home() {
+export default async function HomePage() {
+  const [designations, hoursAgg] = await Promise.all([
+    prisma.designation.findMany({ orderBy: { name: "asc" } }),
+    prisma.assignment.groupBy({
+      by: ["designationId"],
+      _sum: { hours: true },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const statsByDesignation = new Map(
+    hoursAgg.map((a) => [a.designationId, { hours: a._sum.hours ?? 0, modules: a._count._all }])
+  );
+
+  const items = designations.map((d) => ({
+    id: d.id,
+    name: d.name,
+    roleStage: d.roleStage,
+    jobFamily: d.jobFamily,
+    hours: statsByDesignation.get(d.id)?.hours ?? 0,
+    moduleCount: statsByDesignation.get(d.id)?.modules ?? 0,
+  }));
+
+  const totalDesignations = items.length;
+  const totalAssignments = items.reduce((sum, i) => sum + i.moduleCount, 0);
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <div className="hero">
+        <span className="kicker">IGS Takshashila Academy</span>
+        <h1>Curriculum Explorer</h1>
+        <p className="subtitle">
+          Pick a designation to see its full role-based curriculum — modules, hours, standards
+          and course links, across all five learning pillars.
+        </p>
+        <div className="stats-row">
+          <div className="stat">
+            <div className="value">{totalDesignations}</div>
+            <div className="label">Designations</div>
+          </div>
+          <div className="stat">
+            <div className="value">{totalAssignments.toLocaleString()}</div>
+            <div className="label">Role-to-module assignments</div>
+          </div>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </div>
+      <DesignationBrowser items={items} />
+    </>
   );
 }

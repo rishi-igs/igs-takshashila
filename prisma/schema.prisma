@@ -1,0 +1,153 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Pillar {
+  PROCESS_AND_QUALITY
+  DOMAIN_AND_BUSINESS
+  TOOLS_AND_ENGINEERING
+  AI_ENABLEMENT
+  COMMUNICATION
+}
+
+enum Role {
+  LEARNER
+  ADMIN
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  passwordSalt  String
+  name          String
+  role          Role     @default(LEARNER)
+  designationId String?
+  createdAt     DateTime @default(now())
+
+  designation Designation? @relation(fields: [designationId], references: [id])
+  progress    Progress[]
+}
+
+// One row per learner x assignment — completion tracking
+model Progress {
+  id          String         @id @default(cuid())
+  userId      String
+  assignmentId String
+  status      ProgressStatus @default(NOT_STARTED)
+  evidenceNote String?
+  completedAt DateTime?
+  updatedAt   DateTime       @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id])
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+
+  @@unique([userId, assignmentId])
+  @@index([userId])
+  @@index([assignmentId])
+}
+
+model Designation {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  roleStage   String
+  jobFamily   String
+  assignments Assignment[]
+  courses     CourseDesignation[]
+  users       User[]
+}
+
+model Module {
+  // Module ID from the source sheet, e.g. "PT-040", "LM-037", "AI-ROVO"
+  code              String       @id
+  pillar            Pillar
+  name              String
+  capabilityTopics  String
+  practicalOutput   String
+  standard          String
+  assignments       Assignment[]
+}
+
+// One row per Designation x Module pairing — the 8,032-row fact table
+model Assignment {
+  id              String   @id @default(cuid())
+  designationId   String
+  moduleCode      String
+  requirement     String   // Mandatory / Deployment-specific / Choose one
+  hours           Int
+  freeLearning    String?
+  freeLink        String?
+  premiumLearning String?
+  premiumLink     String?
+
+  designation Designation @relation(fields: [designationId], references: [id])
+  module      Module      @relation(fields: [moduleCode], references: [code])
+  progress    Progress[]
+
+  @@index([designationId])
+  @@index([moduleCode])
+}
+
+// The 210-row deduplicated Course Library sheet
+model Course {
+  id                     String   @id @default(cuid())
+  provider               String
+  name                   String
+  accessType             String
+  directLink             String?
+  mappedModulesRaw        String   // raw text from "Mapped curriculum modules" — see roleStages/designations for parsed links
+  qualityNote            String?
+  validationStatus       String
+
+  pillars     CoursePillar[]
+  roleStages  CourseRoleStage[]
+  designations CourseDesignation[]
+}
+
+model CoursePillar {
+  id       String @id @default(cuid())
+  courseId String
+  pillar   Pillar
+
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@index([pillar])
+}
+
+model CourseRoleStage {
+  id        String @id @default(cuid())
+  courseId  String
+  roleStage String
+
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@index([roleStage])
+}
+
+model CourseDesignation {
+  id            String @id @default(cuid())
+  courseId      String
+  designationId String
+
+  course      Course      @relation(fields: [courseId], references: [id])
+  designation Designation @relation(fields: [designationId], references: [id])
+
+  @@index([courseId])
+  @@index([designationId])
+}

@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import DesignationBrowser from "@/components/DesignationBrowser";
+import FeaturedDesignations from "@/components/FeaturedDesignations";
+import SkillsSection from "@/components/SkillsSection";
+import TrendingCourses from "@/components/TrendingCourses";
+import Testimonials from "@/components/Testimonials";
 
 export default async function HomePage() {
   const user = await getCurrentUser();
@@ -37,7 +40,7 @@ export default async function HomePage() {
     <>
       <div className="hero">
         <span className="kicker">IGS Takshashila Academy</span>
-        <h1>Curriculum Explorer</h1>
+        <h1>Start learning today!</h1>
         <p className="subtitle">
           Pick a designation to see its full role-based curriculum — modules, hours, standards
           and course links, across all five learning pillars.
@@ -53,7 +56,14 @@ export default async function HomePage() {
           </div>
         </div>
       </div>
-      <DesignationBrowser items={items} />
+
+      {!user && <SkillsSection />}
+      {!user && <TrendingCourses />}
+
+      <h2>Curriculum Explorer</h2>
+      <FeaturedDesignations items={items} />
+
+      {!user && <Testimonials />}
     </>
   );
 }

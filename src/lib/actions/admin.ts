@@ -150,6 +150,66 @@ export async function createLearnerAction(formData: FormData) {
   redirect(`/admin/learners/${user.id}?created=1`);
 }
 
+export async function createAdminAction(formData: FormData) {
+  await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+
+  if (!name || !email) {
+    redirect("/admin/admins/new?error=" + encodeURIComponent("Name and email are required."));
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    redirect(
+      "/admin/admins/new?error=" + encodeURIComponent("An account with that email already exists.")
+    );
+  }
+
+  const password = generateTempPassword();
+  const { hash, salt } = hashPassword(password);
+
+  const user = await prisma.user.create({
+    data: {
+      name,
+      email,
+      passwordHash: hash,
+      passwordSalt: salt,
+      role: "ADMIN",
+    },
+  });
+
+  await setFlashCredentials(email, password);
+  revalidatePath("/admin/admins");
+  redirect(`/admin/admins/${user.id}?created=1`);
+}
+
+export async function deleteAdminAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const targetId = String(formData.get("adminId") || "");
+
+  if (targetId === admin.id) {
+    redirect(`/admin/admins/${targetId}?error=` + encodeURIComponent("You can't delete your own account."));
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: targetId } });
+  if (!target || target.role !== "ADMIN") {
+    redirect("/admin/admins?error=" + encodeURIComponent("Administrator not found."));
+  }
+
+  const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
+  if (adminCount <= 1) {
+    redirect(
+      `/admin/admins/${targetId}?error=` +
+        encodeURIComponent("Can't delete the last remaining administrator.")
+    );
+  }
+
+  await prisma.user.delete({ where: { id: targetId } });
+  revalidatePath("/admin/admins");
+  redirect("/admin/admins?deleted=1");
+}
+
 export async function updateCourseAction(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") || "");

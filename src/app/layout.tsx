@@ -49,7 +49,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </>
             ) : user ? (
               <>
-                <a href="/">Curriculum</a>
+                <a href="/curriculum">Curriculum</a>
                 <a href="/courses">Course Library</a>
                 <a href="/my-progress">My Progress</a>
                 <a href="/account">Account</a>
@@ -64,7 +64,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </>
             ) : (
               <>
-                <a href="/">Curriculum</a>
+                <a href="/curriculum">Curriculum</a>
                 <a href="/courses">Course Library</a>
                 <a href="/login" className="button">
                   Log in

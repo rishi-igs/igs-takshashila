@@ -43,6 +43,10 @@ export default async function AdminHome({
           <div className="name">Learners</div>
           <div className="meta">Create accounts, review individual performance</div>
         </a>
+        <a className="card" href="/admin/admins">
+          <div className="name">Administrators</div>
+          <div className="meta">Create or remove admin accounts</div>
+        </a>
         <a className="card" href="/admin/courses">
           <div className="name">Manage courses</div>
           <div className="meta">Edit links, validation status, notes</div>

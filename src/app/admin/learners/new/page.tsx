@@ -1,6 +1,7 @@
 import { requireAdminPage } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { createLearnerAction } from "@/lib/actions/admin";
+import { PILLAR_ORDER, PILLAR_LABELS } from "@/lib/pillars";
 
 export default async function NewLearnerPage({
   searchParams,
@@ -43,6 +44,24 @@ export default async function NewLearnerPage({
             ))}
           </select>
         </label>
+        <div>
+          <span className="dropdown-label">Modules</span>
+          <details className="dropdown">
+            <summary>Select modules</summary>
+            <div className="dropdown-panel">
+              <p className="muted" style={{ fontSize: "0.8rem", margin: "0 0 0.6rem" }}>
+                Leave everything checked to give the learner their full designation curriculum, or
+                uncheck a pillar to hide it from them.
+              </p>
+              {PILLAR_ORDER.map((pillar) => (
+                <label key={pillar} className="dropdown-option">
+                  <input type="checkbox" name="pillar" value={pillar} defaultChecked />
+                  <span>{PILLAR_LABELS[pillar]}</span>
+                </label>
+              ))}
+            </div>
+          </details>
+        </div>
         <button type="submit">Create learner</button>
       </form>
     </div>

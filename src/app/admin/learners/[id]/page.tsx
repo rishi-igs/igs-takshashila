@@ -10,11 +10,17 @@ export default async function AdminLearnerDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string; assessmentSent?: string; certificateIssued?: string; error?: string }>;
+  searchParams: Promise<{
+    created?: string;
+    assessmentSent?: string;
+    certificateIssued?: string;
+    modulesSaved?: string;
+    error?: string;
+  }>;
 }) {
   await requireAdminPage();
   const { id } = await params;
-  const { created, assessmentSent, certificateIssued, error } = await searchParams;
+  const { created, assessmentSent, certificateIssued, modulesSaved, error } = await searchParams;
 
   const [learner, assessments, certificates] = await Promise.all([
     prisma.user.findUnique({ where: { id }, include: { designation: true } }),
@@ -35,6 +41,7 @@ export default async function AdminLearnerDetailPage({
       <p className="subtitle">{learner.email}</p>
 
       {error && <p className="form-error">{error}</p>}
+      {modulesSaved && <p className="form-note">Module selection saved.</p>}
       {assessmentSent && <p className="form-note">Assessment sent — the learner will see it on their My Learning page.</p>}
       {certificateIssued && (
         <p className="form-note">
@@ -99,7 +106,16 @@ export default async function AdminLearnerDetailPage({
       {!learner.designationId || !learner.designation ? (
         <p className="empty-state">This learner hasn&apos;t set a designation yet.</p>
       ) : (
-        <LearnerCurriculumSection userId={learner.id} designationId={learner.designationId} />
+        <>
+          <a
+            href={`/admin/learners/${learner.id}/modules`}
+            className="button secondary"
+            style={{ marginBottom: "1.25rem" }}
+          >
+            Manage module access
+          </a>
+          <LearnerCurriculumSection userId={learner.id} designationId={learner.designationId} />
+        </>
       )}
     </>
   );

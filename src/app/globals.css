@@ -975,6 +975,117 @@ button.danger:hover,
   border-left-color: var(--note-border);
 }
 
+/* ---------- module checklist ---------- */
+
+.checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.5rem;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.checklist-item:hover {
+  border-color: var(--accent);
+}
+
+.checklist-item input[type="checkbox"] {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ---------- dropdown checklist (e.g. pillar picker) ---------- */
+
+.dropdown-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+.dropdown {
+  position: relative;
+}
+
+.dropdown summary {
+  list-style: none;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.65rem 0.8rem;
+  color: var(--foreground);
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  transition: border-color 0.15s ease;
+}
+
+.dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.dropdown summary::after {
+  content: "▾";
+  color: var(--muted);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.dropdown:hover summary,
+.dropdown[open] summary {
+  border-color: var(--accent);
+}
+
+.dropdown[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.dropdown-panel {
+  margin-top: 0.5rem;
+  padding: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.dropdown-panel .dropdown-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.dropdown-option input[type="checkbox"] {
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
 /* ---------- progress controls ---------- */
 
 .status-control {

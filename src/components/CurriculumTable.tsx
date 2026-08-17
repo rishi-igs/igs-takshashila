@@ -15,6 +15,7 @@ export type CurriculumRow = {
   freeLink: string | null;
   premiumLearning: string | null;
   premiumLink: string | null;
+  course: { name: string; provider: string; accessType: string; directLink: string | null } | null;
   status?: ProgressStatus;
 };
 
@@ -114,6 +115,16 @@ export default function CurriculumTable({
                       </td>
                       <td>
                         <div className="link-list">
+                          {r.course &&
+                            (r.course.directLink ? (
+                              <a href={r.course.directLink} target="_blank" rel="noreferrer">
+                                {r.course.accessType}: {r.course.name} ({r.course.provider})
+                              </a>
+                            ) : (
+                              <span className="muted">
+                                {r.course.accessType}: {r.course.name} ({r.course.provider})
+                              </span>
+                            ))}
                           {r.freeLink ? (
                             <a href={r.freeLink} target="_blank" rel="noreferrer">
                               Free: {r.freeLearning || "Link"}

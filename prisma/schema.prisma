@@ -55,18 +55,23 @@ model User {
 // Per-learner module visibility override. If a learner has any rows here,
 // their curriculum is restricted to just those assignments; with none, they
 // see the full curriculum for their designation (the original behavior).
+// courseId lets admin pin a specific Course Library entry to this module for
+// this particular learner (mandatory modules only, chosen in the UI).
 model LearnerModule {
   id           String   @id @default(cuid())
   userId       String
   assignmentId String
+  courseId     String?
   createdAt    DateTime @default(now())
 
   user       User       @relation(fields: [userId], references: [id])
   assignment Assignment @relation(fields: [assignmentId], references: [id])
+  course     Course?    @relation(fields: [courseId], references: [id])
 
   @@unique([userId, assignmentId])
   @@index([userId])
   @@index([assignmentId])
+  @@index([courseId])
 }
 
 // One row per learner x assignment — completion tracking
@@ -216,6 +221,7 @@ model Course {
   pillars     CoursePillar[]
   roleStages  CourseRoleStage[]
   designations CourseDesignation[]
+  learnerModules LearnerModule[]
 }
 
 model CoursePillar {

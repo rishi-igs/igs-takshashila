@@ -6,9 +6,8 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireAdmin, hashPassword, generateTempPassword, setFlashCredentials } from "@/lib/auth";
 import { generateAssessmentQuestions } from "@/lib/assessment-generator";
-import { getLearnerAssignmentFilter } from "@/lib/learner-curriculum";
+import { getLearnerAssignmentFilter, getMandatoryAssignmentIds } from "@/lib/learner-curriculum";
 import { CERTIFICATE_PASS_SCORE } from "@/lib/certificate";
-import { PILLAR_ORDER } from "@/lib/pillars";
 import type { Pillar } from "@/generated/prisma/enums";
 
 function generateCertificateNumber(): string {
@@ -123,12 +122,51 @@ export async function createAssessmentAction(formData: FormData) {
   redirect(`/admin/learners/${learnerId}?assessmentSent=1`);
 }
 
+// Reads the posted `assignmentId` checkboxes + `courseId_<id>` dropdowns from
+// a ModuleChecklistFields form, unions in every Mandatory-requirement
+// assignment for the designation (they can never be excluded), and resolves
+// each to a validated course pick (or null). Shared by learner creation and
+// the per-learner module checklist so both enforce the exact same rules.
+async function resolveModuleSelections(
+  formData: FormData,
+  designationId: string
+): Promise<{ assignmentId: string; courseId: string | null }[]> {
+  const selectedAssignmentIds = formData.getAll("assignmentId").map(String);
+  const [validAssignments, mandatoryIds] = await Promise.all([
+    prisma.assignment.findMany({
+      where: { id: { in: selectedAssignmentIds }, designationId },
+      select: { id: true },
+    }),
+    getMandatoryAssignmentIds(designationId),
+  ]);
+  const finalIds = new Set([...validAssignments.map((a) => a.id), ...mandatoryIds]);
+
+  const postedCourseIdByAssignmentId = new Map<string, string>();
+  for (const assignmentId of finalIds) {
+    const courseId = String(formData.get(`courseId_${assignmentId}`) || "").trim();
+    if (courseId) postedCourseIdByAssignmentId.set(assignmentId, courseId);
+  }
+  const postedCourseIds = [...new Set(postedCourseIdByAssignmentId.values())];
+  const validCourseIds =
+    postedCourseIds.length > 0
+      ? new Set(
+          (await prisma.course.findMany({ where: { id: { in: postedCourseIds } }, select: { id: true } })).map(
+            (c) => c.id
+          )
+        )
+      : new Set<string>();
+
+  return [...finalIds].map((assignmentId) => {
+    const courseId = postedCourseIdByAssignmentId.get(assignmentId);
+    return { assignmentId, courseId: courseId && validCourseIds.has(courseId) ? courseId : null };
+  });
+}
+
 export async function createLearnerAction(formData: FormData) {
   await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const designationId = String(formData.get("designationId") || "").trim();
-  const selectedPillars = new Set(formData.getAll("pillar").map(String)) as Set<Pillar>;
 
   if (!name || !email) {
     redirect("/admin/learners/new?error=" + encodeURIComponent("Name and email are required."));
@@ -155,17 +193,11 @@ export async function createLearnerAction(formData: FormData) {
     },
   });
 
-  // Unchecking a pillar restricts the learner to the remaining ones. With
-  // every pillar checked (the default) or none at all, there's no
-  // restriction — the learner sees their whole designation curriculum.
-  if (designationId && selectedPillars.size > 0 && selectedPillars.size < PILLAR_ORDER.length) {
-    const assignments = await prisma.assignment.findMany({
-      where: { designationId, module: { pillar: { in: [...selectedPillars] } } },
-      select: { id: true },
-    });
-    if (assignments.length > 0) {
+  if (designationId) {
+    const selections = await resolveModuleSelections(formData, designationId);
+    if (selections.length > 0) {
       await prisma.learnerModule.createMany({
-        data: assignments.map((a) => ({ userId: user.id, assignmentId: a.id })),
+        data: selections.map((s) => ({ userId: user.id, assignmentId: s.assignmentId, courseId: s.courseId })),
       });
     }
   }
@@ -184,20 +216,14 @@ export async function saveLearnerModulesAction(formData: FormData) {
     redirect("/admin/learners?error=" + encodeURIComponent("Learner not found or has no designation."));
   }
 
-  const selectedAssignmentIds = formData.getAll("assignmentId").map(String);
-  // Only assignments that belong to this learner's own designation can be
-  // selected, regardless of what IDs were posted.
-  const validAssignments = await prisma.assignment.findMany({
-    where: { id: { in: selectedAssignmentIds }, designationId: learner.designationId },
-    select: { id: true },
-  });
+  const selections = await resolveModuleSelections(formData, learner.designationId);
 
   await prisma.$transaction([
     prisma.learnerModule.deleteMany({ where: { userId: learnerId } }),
-    ...(validAssignments.length > 0
+    ...(selections.length > 0
       ? [
           prisma.learnerModule.createMany({
-            data: validAssignments.map((a) => ({ userId: learnerId, assignmentId: a.id })),
+            data: selections.map((s) => ({ userId: learnerId, assignmentId: s.assignmentId, courseId: s.courseId })),
           }),
         ]
       : []),

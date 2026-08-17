@@ -1,8 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { requireAdminPage, readFlashCredentials } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { PILLAR_LABELS, PILLAR_ORDER } from "@/lib/pillars";
-import type { Pillar } from "@/generated/prisma/enums";
+import { getModuleChecklistData } from "@/lib/module-checklist";
+import ModuleChecklistFields from "@/components/ModuleChecklistFields";
 import { saveLearnerModulesAction, resetLearnerModulesAction } from "@/lib/actions/admin";
 
 export default async function LearnerModulesPage({
@@ -22,26 +22,15 @@ export default async function LearnerModulesPage({
     redirect(`/admin/learners/${id}`);
   }
 
-  const [assignments, selections] = await Promise.all([
-    prisma.assignment.findMany({
-      where: { designationId: learner.designationId },
-      include: { module: true },
-    }),
-    prisma.learnerModule.findMany({ where: { userId: id }, select: { assignmentId: true } }),
+  const [data, selections] = await Promise.all([
+    getModuleChecklistData(learner.designationId),
+    prisma.learnerModule.findMany({ where: { userId: id }, select: { assignmentId: true, courseId: true } }),
   ]);
 
-  const selectedIds = new Set(selections.map((s) => s.assignmentId));
-  const isRestricted = selectedIds.size > 0;
-
-  const byPillar = new Map<Pillar, typeof assignments>();
-  for (const a of assignments) {
-    const list = byPillar.get(a.module.pillar) ?? [];
-    list.push(a);
-    byPillar.set(a.module.pillar, list);
-  }
-  for (const list of byPillar.values()) {
-    list.sort((a, b) => a.module.name.localeCompare(b.module.name));
-  }
+  const selectedIds = selections.length > 0 ? new Set(selections.map((s) => s.assignmentId)) : null;
+  const courseIdByAssignmentId = new Map(
+    selections.filter((s) => s.courseId).map((s) => [s.assignmentId, s.courseId as string])
+  );
 
   const credentials = created ? await readFlashCredentials() : null;
 
@@ -54,7 +43,9 @@ export default async function LearnerModulesPage({
       <p className="subtitle">
         Check the modules this learner should see. Only checked modules will appear on their
         curriculum — leave everything checked, or use &quot;Show entire curriculum&quot; below, to
-        give them the full {learner.designation.name} curriculum instead.
+        give them the full {learner.designation.name} curriculum instead. Mandatory modules can&apos;t
+        be excluded and are always included — pick a specific course for this learner from the
+        dropdown under each one.
       </p>
 
       {credentials && credentials.email === learner.email && (
@@ -68,40 +59,18 @@ export default async function LearnerModulesPage({
         </div>
       )}
 
-      {isRestricted && (
+      {selectedIds && (
         <p className="form-note">
-          This learner is currently restricted to {selectedIds.size} of {assignments.length} modules.
+          This learner is currently restricted to {selectedIds.size} of {data.assignments.length} modules.
         </p>
       )}
 
-      {assignments.length === 0 ? (
+      {data.assignments.length === 0 ? (
         <p className="empty-state">This designation has no modules assigned yet.</p>
       ) : (
         <form action={saveLearnerModulesAction}>
           <input type="hidden" name="learnerId" value={id} />
-          {PILLAR_ORDER.filter((p) => byPillar.has(p)).map((pillar) => (
-            <section key={pillar}>
-              <h2>{PILLAR_LABELS[pillar]}</h2>
-              <div className="checklist">
-                {byPillar.get(pillar)!.map((a) => (
-                  <label key={a.id} className="checklist-item">
-                    <input
-                      type="checkbox"
-                      name="assignmentId"
-                      value={a.id}
-                      defaultChecked={!isRestricted || selectedIds.has(a.id)}
-                    />
-                    <span>
-                      {a.module.name}{" "}
-                      <span className="muted">
-                        ({a.module.code} · {a.hours} hrs)
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </section>
-          ))}
+          <ModuleChecklistFields data={data} selectedIds={selectedIds} courseIdByAssignmentId={courseIdByAssignmentId} />
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
             <button type="submit">Save selection</button>
           </div>

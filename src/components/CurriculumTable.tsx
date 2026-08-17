@@ -86,7 +86,27 @@ export default function CurriculumTable({
               </span>
             </h2>
             <div className="table-wrap">
-              <table>
+              <table className="curriculum-table">
+                <colgroup>
+                  {showProgressColumn ? (
+                    <>
+                      <col style={{ width: "24%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "7%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "22%" }} />
+                      <col style={{ width: "16%" }} />
+                    </>
+                  ) : (
+                    <>
+                      <col style={{ width: "28%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "8%" }} />
+                      <col style={{ width: "24%" }} />
+                      <col style={{ width: "28%" }} />
+                    </>
+                  )}
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Module</th>

@@ -5,6 +5,7 @@ import "./globals.css";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions/auth";
 import ThemeToggle from "@/components/ThemeToggle";
+import SiteGuide from "@/components/SiteGuide";
 
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
 
@@ -73,6 +74,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </>
             )}
             <ThemeToggle />
+            <SiteGuide isLoggedIn={Boolean(user)} role={user?.role ?? null} />
           </nav>
         </header>
         <main className="site-main">{children}</main>

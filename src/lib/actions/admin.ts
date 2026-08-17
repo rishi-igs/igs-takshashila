@@ -6,7 +6,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireAdmin, hashPassword, generateTempPassword, setFlashCredentials } from "@/lib/auth";
 import { generateAssessmentQuestions } from "@/lib/assessment-generator";
+import { getLearnerAssignmentFilter } from "@/lib/learner-curriculum";
 import { CERTIFICATE_PASS_SCORE } from "@/lib/certificate";
+import { PILLAR_ORDER } from "@/lib/pillars";
 import type { Pillar } from "@/generated/prisma/enums";
 
 function generateCertificateNumber(): string {
@@ -77,17 +79,24 @@ export async function createAssessmentAction(formData: FormData) {
     redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("This learner already has a pending assessment."));
   }
 
+  const assignmentIds = await getLearnerAssignmentFilter(learnerId);
+  const scopeFilter = assignmentIds ? { id: { in: [...assignmentIds] } } : {};
+
   const [total, done] = await Promise.all([
-    prisma.assignment.count({ where: { designationId: learner.designationId } }),
+    prisma.assignment.count({ where: { designationId: learner.designationId, ...scopeFilter } }),
     prisma.progress.count({
-      where: { userId: learnerId, status: "DONE", assignment: { designationId: learner.designationId } },
+      where: {
+        userId: learnerId,
+        status: "DONE",
+        assignment: { designationId: learner.designationId, ...scopeFilter },
+      },
     }),
   ]);
   if (total === 0 || done < total) {
     redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("Learner hasn't completed their curriculum yet."));
   }
 
-  const questions = await generateAssessmentQuestions(learner.designationId, 25);
+  const questions = await generateAssessmentQuestions(learner.designationId, 25, assignmentIds);
   if (questions.length < 5) {
     redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("Not enough curriculum content to build an assessment."));
   }
@@ -119,6 +128,7 @@ export async function createLearnerAction(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const designationId = String(formData.get("designationId") || "").trim();
+  const selectedPillars = new Set(formData.getAll("pillar").map(String)) as Set<Pillar>;
 
   if (!name || !email) {
     redirect("/admin/learners/new?error=" + encodeURIComponent("Name and email are required."));
@@ -145,9 +155,77 @@ export async function createLearnerAction(formData: FormData) {
     },
   });
 
+  // Unchecking a pillar restricts the learner to the remaining ones. With
+  // every pillar checked (the default) or none at all, there's no
+  // restriction — the learner sees their whole designation curriculum.
+  if (designationId && selectedPillars.size > 0 && selectedPillars.size < PILLAR_ORDER.length) {
+    const assignments = await prisma.assignment.findMany({
+      where: { designationId, module: { pillar: { in: [...selectedPillars] } } },
+      select: { id: true },
+    });
+    if (assignments.length > 0) {
+      await prisma.learnerModule.createMany({
+        data: assignments.map((a) => ({ userId: user.id, assignmentId: a.id })),
+      });
+    }
+  }
+
   await setFlashCredentials(email, password);
   revalidatePath("/admin/learners");
   redirect(`/admin/learners/${user.id}?created=1`);
+}
+
+export async function saveLearnerModulesAction(formData: FormData) {
+  await requireAdmin();
+  const learnerId = String(formData.get("learnerId") || "");
+
+  const learner = await prisma.user.findUnique({ where: { id: learnerId } });
+  if (!learner || learner.role !== "LEARNER" || !learner.designationId) {
+    redirect("/admin/learners?error=" + encodeURIComponent("Learner not found or has no designation."));
+  }
+
+  const selectedAssignmentIds = formData.getAll("assignmentId").map(String);
+  // Only assignments that belong to this learner's own designation can be
+  // selected, regardless of what IDs were posted.
+  const validAssignments = await prisma.assignment.findMany({
+    where: { id: { in: selectedAssignmentIds }, designationId: learner.designationId },
+    select: { id: true },
+  });
+
+  await prisma.$transaction([
+    prisma.learnerModule.deleteMany({ where: { userId: learnerId } }),
+    ...(validAssignments.length > 0
+      ? [
+          prisma.learnerModule.createMany({
+            data: validAssignments.map((a) => ({ userId: learnerId, assignmentId: a.id })),
+          }),
+        ]
+      : []),
+  ]);
+
+  revalidatePath(`/admin/learners/${learnerId}`);
+  revalidatePath(`/admin/learners/${learnerId}/modules`);
+  revalidatePath("/admin/learners");
+  revalidatePath("/my-progress");
+  redirect(`/admin/learners/${learnerId}?modulesSaved=1`);
+}
+
+export async function resetLearnerModulesAction(formData: FormData) {
+  await requireAdmin();
+  const learnerId = String(formData.get("learnerId") || "");
+
+  const learner = await prisma.user.findUnique({ where: { id: learnerId } });
+  if (!learner || learner.role !== "LEARNER") {
+    redirect("/admin/learners?error=" + encodeURIComponent("Learner not found."));
+  }
+
+  await prisma.learnerModule.deleteMany({ where: { userId: learnerId } });
+
+  revalidatePath(`/admin/learners/${learnerId}`);
+  revalidatePath(`/admin/learners/${learnerId}/modules`);
+  revalidatePath("/admin/learners");
+  revalidatePath("/my-progress");
+  redirect(`/admin/learners/${learnerId}?modulesSaved=1`);
 }
 
 export async function createAdminAction(formData: FormData) {

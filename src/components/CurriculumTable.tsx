@@ -15,6 +15,7 @@ export type CurriculumRow = {
   freeLink: string | null;
   premiumLearning: string | null;
   premiumLink: string | null;
+  course: { name: string; provider: string; accessType: string; directLink: string | null } | null;
   status?: ProgressStatus;
 };
 
@@ -85,7 +86,27 @@ export default function CurriculumTable({
               </span>
             </h2>
             <div className="table-wrap">
-              <table>
+              <table className="curriculum-table">
+                <colgroup>
+                  {showProgressColumn ? (
+                    <>
+                      <col style={{ width: "24%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "7%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "22%" }} />
+                      <col style={{ width: "16%" }} />
+                    </>
+                  ) : (
+                    <>
+                      <col style={{ width: "28%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "8%" }} />
+                      <col style={{ width: "24%" }} />
+                      <col style={{ width: "28%" }} />
+                    </>
+                  )}
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Module</th>
@@ -114,6 +135,16 @@ export default function CurriculumTable({
                       </td>
                       <td>
                         <div className="link-list">
+                          {r.course &&
+                            (r.course.directLink ? (
+                              <a href={r.course.directLink} target="_blank" rel="noreferrer">
+                                {r.course.accessType}: {r.course.name} ({r.course.provider})
+                              </a>
+                            ) : (
+                              <span className="muted">
+                                {r.course.accessType}: {r.course.name} ({r.course.provider})
+                              </span>
+                            ))}
                           {r.freeLink ? (
                             <a href={r.freeLink} target="_blank" rel="noreferrer">
                               Free: {r.freeLearning || "Link"}

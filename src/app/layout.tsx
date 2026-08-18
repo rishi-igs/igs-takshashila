@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions/auth";
 import ThemeToggle from "@/components/ThemeToggle";
+import SiteGuide from "@/components/SiteGuide";
 
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
 
@@ -30,7 +32,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <body>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <header className="site-header">
           <a href={homeHref} className="brand">
             <img src="/igs-logo.png" alt="IGS" className="mark" />
@@ -72,6 +74,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </>
             )}
             <ThemeToggle />
+            <SiteGuide isLoggedIn={Boolean(user)} role={user?.role ?? null} />
           </nav>
         </header>
         <main className="site-main">{children}</main>

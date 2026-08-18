@@ -40,9 +40,15 @@ function shuffle<T>(arr: T[]): T[] {
  * Questions drawn from modules in the learner's own curriculum are preferred;
  * the rest of a quota is topped up from anywhere in that pillar so a narrow
  * curriculum doesn't make a test unbuildable.
+ *
+ * allowedAssignmentIds narrows "the learner's own curriculum" to a per-learner
+ * module restriction when one is set (null means the full designation). A
+ * learner whose curriculum was cut down to ten modules should be examined on
+ * those, not on the ninety they were never assigned.
  */
 export async function selectFromBank(
-  designationId: string | null
+  designationId: string | null,
+  allowedAssignmentIds?: Set<string> | null
 ): Promise<{ questions: SelectedQuestion[]; blueprintName: string; durationMinutes: number; passScore: number }> {
   const blueprint = await resolveBlueprint(designationId);
   if (!blueprint) {
@@ -62,7 +68,10 @@ export async function selectFromBank(
     ? new Set(
         (
           await prisma.assignment.findMany({
-            where: { designationId },
+            where: {
+              designationId,
+              ...(allowedAssignmentIds ? { id: { in: [...allowedAssignmentIds] } } : {}),
+            },
             select: { moduleCode: true },
           })
         ).map((a) => a.moduleCode)

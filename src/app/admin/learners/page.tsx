@@ -6,26 +6,31 @@ import { CERTIFICATE_PASS_SCORE } from "@/lib/certificate";
 export default async function AdminLearnersPage() {
   await requireAdminPage();
 
-  const [learners, assignmentCounts, doneCounts, activeAssessments, submittedAssessments] = await Promise.all([
-    prisma.user.findMany({
-      where: { role: "LEARNER" },
-      include: { designation: true },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.assignment.groupBy({ by: ["designationId"], _count: { _all: true } }),
-    prisma.progress.groupBy({ by: ["userId"], where: { status: "DONE" }, _count: { _all: true } }),
-    prisma.assessment.findMany({
-      where: { status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
-      select: { learnerId: true },
-    }),
-    prisma.assessment.findMany({
-      where: { status: "SUBMITTED" },
-      orderBy: { createdAt: "desc" },
-      include: { certificate: true },
-    }),
-  ]);
+  const [learners, assignmentCounts, doneCounts, activeAssessments, submittedAssessments, selectionCounts] =
+    await Promise.all([
+      prisma.user.findMany({
+        where: { role: "LEARNER" },
+        include: { designation: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.assignment.groupBy({ by: ["designationId"], _count: { _all: true } }),
+      prisma.progress.groupBy({ by: ["userId"], where: { status: "DONE" }, _count: { _all: true } }),
+      prisma.assessment.findMany({
+        where: { status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
+        select: { learnerId: true },
+      }),
+      prisma.assessment.findMany({
+        where: { status: "SUBMITTED" },
+        orderBy: { createdAt: "desc" },
+        include: { certificate: true },
+      }),
+      // Learners restricted to a module checklist have a smaller curriculum
+      // than their designation's full assignment count.
+      prisma.learnerModule.groupBy({ by: ["userId"], _count: { _all: true } }),
+    ]);
 
   const totalByDesignation = new Map(assignmentCounts.map((a) => [a.designationId, a._count._all]));
+  const restrictedTotalByUser = new Map(selectionCounts.map((s) => [s.userId, s._count._all]));
   const doneByUser = new Map(doneCounts.map((d) => [d.userId, d._count._all]));
   const hasActiveAssessment = new Set(activeAssessments.map((a) => a.learnerId));
 
@@ -63,7 +68,9 @@ export default async function AdminLearnersPage() {
             </thead>
             <tbody>
               {learners.map((l) => {
-                const total = l.designationId ? totalByDesignation.get(l.designationId) ?? 0 : 0;
+                const total = l.designationId
+                  ? restrictedTotalByUser.get(l.id) ?? totalByDesignation.get(l.designationId) ?? 0
+                  : 0;
                 const done = doneByUser.get(l.id) ?? 0;
                 const pct = total === 0 ? 0 : Math.round((done / total) * 100);
                 const complete = total > 0 && done >= total;

@@ -8,6 +8,7 @@ import { requireAdmin, hashPassword, generateTempPassword, setFlashCredentials }
 import { generateAssessmentQuestions } from "@/lib/assessment-generator";
 import { resolveBlueprint } from "@/lib/blueprint";
 import { selectFromBank, BankShortfallError } from "@/lib/bank-selection";
+import { getLearnerAssignmentFilter, getMandatoryAssignmentIds } from "@/lib/learner-curriculum";
 import { CERTIFICATE_PASS_SCORE } from "@/lib/certificate";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit";
 import { openEnrolment } from "@/lib/enrolment";
@@ -95,10 +96,17 @@ export async function createAssessmentAction(formData: FormData) {
     redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("This learner already has a pending assessment."));
   }
 
+  const assignmentIds = await getLearnerAssignmentFilter(learnerId);
+  const scopeFilter = assignmentIds ? { id: { in: [...assignmentIds] } } : {};
+
   const [total, done] = await Promise.all([
-    prisma.assignment.count({ where: { designationId: learner.designationId } }),
+    prisma.assignment.count({ where: { designationId: learner.designationId, ...scopeFilter } }),
     prisma.progress.count({
-      where: { userId: learnerId, status: "DONE", assignment: { designationId: learner.designationId } },
+      where: {
+        userId: learnerId,
+        status: "DONE",
+        assignment: { designationId: learner.designationId, ...scopeFilter },
+      },
     }),
   ]);
   if (total === 0 || done < total) {
@@ -110,6 +118,10 @@ export async function createAssessmentAction(formData: FormData) {
   // If no blueprint is configured at all, fall back to generating from the
   // curriculum directly — that keeps a fresh install working before anyone
   // has set up the bank, rather than blocking assessments entirely.
+  //
+  // Either way the learner's per-learner module restriction is respected: a
+  // learner whose curriculum was narrowed to ten modules must not be examined
+  // on the ninety they were never given.
   let questions: {
     order: number;
     questionText: string;
@@ -124,7 +136,7 @@ export async function createAssessmentAction(formData: FormData) {
   const blueprint = await resolveBlueprint(learner.designationId);
   if (blueprint) {
     try {
-      const picked = await selectFromBank(learner.designationId);
+      const picked = await selectFromBank(learner.designationId, assignmentIds);
       questions = picked.questions;
       durationMinutes = picked.durationMinutes;
       source = `blueprint "${picked.blueprintName}"`;
@@ -135,7 +147,7 @@ export async function createAssessmentAction(formData: FormData) {
       throw e;
     }
   } else {
-    questions = await generateAssessmentQuestions(learner.designationId, 25);
+    questions = await generateAssessmentQuestions(learner.designationId, 25, assignmentIds);
     source = "curriculum (no blueprint configured)";
     if (questions.length < 5) {
       redirect(`/admin/learners/${learnerId}?error=` + encodeURIComponent("Not enough curriculum content to build an assessment."));
@@ -172,6 +184,46 @@ export async function createAssessmentAction(formData: FormData) {
   revalidatePath(`/admin/learners/${learnerId}`);
   revalidatePath("/admin/learners");
   redirect(`/admin/learners/${learnerId}?assessmentSent=1`);
+}
+
+// Reads the posted `assignmentId` checkboxes + `courseId_<id>` dropdowns from
+// a ModuleChecklistFields form, unions in every Mandatory-requirement
+// assignment for the designation (they can never be excluded), and resolves
+// each to a validated course pick (or null). Shared by learner creation and
+// the per-learner module checklist so both enforce the exact same rules.
+async function resolveModuleSelections(
+  formData: FormData,
+  designationId: string
+): Promise<{ assignmentId: string; courseId: string | null }[]> {
+  const selectedAssignmentIds = formData.getAll("assignmentId").map(String);
+  const [validAssignments, mandatoryIds] = await Promise.all([
+    prisma.assignment.findMany({
+      where: { id: { in: selectedAssignmentIds }, designationId },
+      select: { id: true },
+    }),
+    getMandatoryAssignmentIds(designationId),
+  ]);
+  const finalIds = new Set([...validAssignments.map((a) => a.id), ...mandatoryIds]);
+
+  const postedCourseIdByAssignmentId = new Map<string, string>();
+  for (const assignmentId of finalIds) {
+    const courseId = String(formData.get(`courseId_${assignmentId}`) || "").trim();
+    if (courseId) postedCourseIdByAssignmentId.set(assignmentId, courseId);
+  }
+  const postedCourseIds = [...new Set(postedCourseIdByAssignmentId.values())];
+  const validCourseIds =
+    postedCourseIds.length > 0
+      ? new Set(
+          (await prisma.course.findMany({ where: { id: { in: postedCourseIds } }, select: { id: true } })).map(
+            (c) => c.id
+          )
+        )
+      : new Set<string>();
+
+  return [...finalIds].map((assignmentId) => {
+    const courseId = postedCourseIdByAssignmentId.get(assignmentId);
+    return { assignmentId, courseId: courseId && validCourseIds.has(courseId) ? courseId : null };
+  });
 }
 
 export async function createLearnerAction(formData: FormData) {
@@ -216,18 +268,75 @@ export async function createLearnerAction(formData: FormData) {
   // create, so the learner's tenure history starts from day one.
   if (designationId) {
     await openEnrolment(user.id, designationId, "Set at account creation");
+
+    const selections = await resolveModuleSelections(formData, designationId);
+    if (selections.length > 0) {
+      await prisma.learnerModule.createMany({
+        data: selections.map((s) => ({ userId: user.id, assignmentId: s.assignmentId, courseId: s.courseId })),
+      });
+    }
+
     await recordAudit(admin, {
       action: AUDIT_ACTIONS.learnerEnrol,
       entityType: "User",
       entityId: user.id,
-      summary: `Enrolled ${name} in ${designationId}`,
-      meta: { designationId },
+      summary: selections.length
+        ? `Enrolled ${name} in ${designationId}, restricted to ${selections.length} modules`
+        : `Enrolled ${name} in ${designationId}`,
+      meta: { designationId, restrictedModules: selections.length || null },
     });
   }
 
   await setFlashCredentials(email, password);
   revalidatePath("/admin/learners");
   redirect(`/admin/learners/${user.id}?created=1`);
+}
+
+export async function saveLearnerModulesAction(formData: FormData) {
+  await requireAdmin();
+  const learnerId = String(formData.get("learnerId") || "");
+
+  const learner = await prisma.user.findUnique({ where: { id: learnerId } });
+  if (!learner || learner.role !== "LEARNER" || !learner.designationId) {
+    redirect("/admin/learners?error=" + encodeURIComponent("Learner not found or has no designation."));
+  }
+
+  const selections = await resolveModuleSelections(formData, learner.designationId);
+
+  await prisma.$transaction([
+    prisma.learnerModule.deleteMany({ where: { userId: learnerId } }),
+    ...(selections.length > 0
+      ? [
+          prisma.learnerModule.createMany({
+            data: selections.map((s) => ({ userId: learnerId, assignmentId: s.assignmentId, courseId: s.courseId })),
+          }),
+        ]
+      : []),
+  ]);
+
+  revalidatePath(`/admin/learners/${learnerId}`);
+  revalidatePath(`/admin/learners/${learnerId}/modules`);
+  revalidatePath("/admin/learners");
+  revalidatePath("/my-progress");
+  redirect(`/admin/learners/${learnerId}?modulesSaved=1`);
+}
+
+export async function resetLearnerModulesAction(formData: FormData) {
+  await requireAdmin();
+  const learnerId = String(formData.get("learnerId") || "");
+
+  const learner = await prisma.user.findUnique({ where: { id: learnerId } });
+  if (!learner || learner.role !== "LEARNER") {
+    redirect("/admin/learners?error=" + encodeURIComponent("Learner not found."));
+  }
+
+  await prisma.learnerModule.deleteMany({ where: { userId: learnerId } });
+
+  revalidatePath(`/admin/learners/${learnerId}`);
+  revalidatePath(`/admin/learners/${learnerId}/modules`);
+  revalidatePath("/admin/learners");
+  revalidatePath("/my-progress");
+  redirect(`/admin/learners/${learnerId}?modulesSaved=1`);
 }
 
 export async function createAdminAction(formData: FormData) {

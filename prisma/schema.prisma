@@ -62,11 +62,12 @@ model User {
   designationId String?
   createdAt     DateTime @default(now())
 
-  designation  Designation?  @relation(fields: [designationId], references: [id])
-  progress     Progress[]
-  assessments  Assessment[]
-  certificates Certificate[]
-  enrolments   Enrolment[]
+  designation      Designation?    @relation(fields: [designationId], references: [id])
+  progress         Progress[]
+  assessments      Assessment[]
+  certificates     Certificate[]
+  enrolments       Enrolment[]
+  moduleSelections LearnerModule[]
 }
 
 // Tenure in a designation. User.designationId is the learner's *current*
@@ -115,6 +116,29 @@ model AuditLog {
   @@index([actorId])
   @@index([action])
   @@index([entityType, entityId])
+}
+
+
+// Per-learner module visibility override. If a learner has any rows here,
+// their curriculum is restricted to just those assignments; with none, they
+// see the full curriculum for their designation (the original behavior).
+// courseId lets admin pin a specific Course Library entry to this module for
+// this particular learner (mandatory modules only, chosen in the UI).
+model LearnerModule {
+  id           String   @id @default(cuid())
+  userId       String
+  assignmentId String
+  courseId     String?
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id])
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  course     Course?    @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, assignmentId])
+  @@index([userId])
+  @@index([assignmentId])
+  @@index([courseId])
 }
 
 // One row per learner x assignment — completion tracking
@@ -367,9 +391,10 @@ model Assignment {
   premiumLearning String?
   premiumLink     String?
 
-  designation Designation @relation(fields: [designationId], references: [id])
-  module      Module      @relation(fields: [moduleCode], references: [code])
-  progress    Progress[]
+  designation    Designation     @relation(fields: [designationId], references: [id])
+  module         Module          @relation(fields: [moduleCode], references: [code])
+  progress       Progress[]
+  learnerModules LearnerModule[]
 
   @@index([designationId])
   @@index([moduleCode])
@@ -389,6 +414,7 @@ model Course {
   pillars     CoursePillar[]
   roleStages  CourseRoleStage[]
   designations CourseDesignation[]
+  learnerModules LearnerModule[]
 }
 
 model CoursePillar {

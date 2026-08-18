@@ -587,6 +587,17 @@ tbody tr:last-child td {
   padding-right: 1.25rem;
 }
 
+/* Fixed, identical column widths (set via <colgroup> in CurriculumTable)
+   so every pillar's separate <table> lines up with the others instead of
+   each one auto-sizing its columns from its own content. */
+.curriculum-table {
+  table-layout: fixed;
+}
+
+.curriculum-table td {
+  overflow-wrap: break-word;
+}
+
 .link-list {
   display: flex;
   flex-direction: column;
@@ -964,6 +975,47 @@ button.danger:hover,
   border-left-color: var(--note-border);
 }
 
+/* ---------- module checklist ---------- */
+
+.checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.5rem;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.checklist-item:hover {
+  border-color: var(--accent);
+}
+
+.checklist-item input[type="checkbox"] {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.checklist-item.locked {
+  cursor: default;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+
+.checklist-item.locked input[type="checkbox"] {
+  opacity: 0.7;
+}
+
 /* ---------- progress controls ---------- */
 
 .status-control {
@@ -1112,6 +1164,79 @@ button.danger:hover,
 
 .testimonial-name {
   font-weight: 700;
+}
+
+/* ---------- site guide ---------- */
+
+.guide-nav {
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  box-shadow: none;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.9rem;
+}
+
+.guide-nav:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: none;
+  transform: none;
+}
+
+.guide-panel {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 25;
+  width: min(340px, calc(100vw - 3rem));
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1.25rem 1.35rem;
+  box-shadow: 0 20px 45px -12px rgba(5, 8, 22, 0.35);
+}
+
+.guide-badge {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.guide-title {
+  font-weight: 800;
+  font-size: 1.02rem;
+  margin: 0 0 0.4rem;
+}
+
+.guide-text {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.guide-waiting {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.guide-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+}
+
+.guide-actions button {
+  font-size: 0.82rem;
+  padding: 0.5rem 0.85rem;
 }
 
 /* Visually hidden but still announced by screen readers. Used where an icon

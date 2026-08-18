@@ -36,10 +36,11 @@ type Shape = "topic" | "hours" | "standard" | "pillar";
 // on-screen option order are all reshuffled each time.
 export async function generateAssessmentQuestions(
   designationId: string,
-  count = 25
+  count = 25,
+  assignmentIds?: Set<string> | null
 ): Promise<GeneratedQuestion[]> {
   const assignments = await prisma.assignment.findMany({
-    where: { designationId },
+    where: { designationId, ...(assignmentIds ? { id: { in: [...assignmentIds] } } : {}) },
     include: { module: true },
   });
   if (assignments.length === 0) return [];

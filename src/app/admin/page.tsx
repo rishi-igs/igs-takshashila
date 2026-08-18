@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdminPage } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -66,6 +67,22 @@ export default async function AdminHome({
         <a className="card" href="/reports">
           <div className="name">Reports</div>
           <div className="meta">Completion by designation and pillar</div>
+        </a>
+        <Link className="card" href="/admin/questions">
+          <div className="name">Question bank</div>
+          <div className="meta">Write and version assessment questions</div>
+        </Link>
+        <Link className="card" href="/admin/blueprints">
+          <div className="name">Assessment blueprints</div>
+          <div className="meta">Test recipes and bank-health warnings</div>
+        </Link>
+        <a className="card" href="/admin/permissions">
+          <div className="name">Permission matrix</div>
+          <div className="meta">What each role can do and whose records they can see</div>
+        </a>
+        <a className="card" href="/admin/audit">
+          <div className="name">Audit log</div>
+          <div className="meta">Who did what, and when</div>
         </a>
       </div>
     </>

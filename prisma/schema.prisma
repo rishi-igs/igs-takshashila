@@ -29,6 +29,23 @@ enum ProgressStatus {
   DONE
 }
 
+enum EnrolmentStatus {
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+}
+
+enum QuestionStatus {
+  DRAFT // being written — never selected for a live test
+  ACTIVE // approved and eligible for selection
+  RETIRED // withdrawn from selection; past tests that used it are unaffected
+}
+
+enum ResultOutcome {
+  PASS
+  FAIL
+}
+
 enum AssessmentStatus {
   ASSIGNED // generated, waiting for the learner to open it
   IN_PROGRESS // opened — timer is running, server-side deadline set
@@ -49,6 +66,55 @@ model User {
   progress     Progress[]
   assessments  Assessment[]
   certificates Certificate[]
+  enrolments   Enrolment[]
+}
+
+// Tenure in a designation. User.designationId is the learner's *current*
+// role; this is the dated history behind it — when they entered a role and
+// how long they've held it. At most one ACTIVE row per learner, enforced by
+// a partial unique index declared directly in the migration SQL (the WHERE
+// clause it needs isn't expressible in the Prisma schema).
+model Enrolment {
+  id            String          @id @default(cuid())
+  userId        String
+  designationId String
+  status        EnrolmentStatus @default(ACTIVE)
+  startedAt     DateTime        @default(now())
+  endedAt       DateTime?
+  note          String?
+
+  user        User        @relation(fields: [userId], references: [id])
+  designation Designation @relation(fields: [designationId], references: [id])
+
+  @@index([userId])
+  @@index([designationId])
+  @@index([status])
+}
+
+// Append-only record of who did what and when, for disputes and compliance.
+//
+// Deliberately has NO foreign key to User: an audit trail has to outlive the
+// accounts it describes, and deleting an administrator must not cascade away
+// the evidence of what they did. actorEmail/actorName are snapshots taken at
+// write time for the same reason — they stay accurate even after the actor
+// is deleted or renamed.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorEmail String
+  actorName  String
+  actorRole  Role
+  action     String // dot-namespaced verb, e.g. "learner.create"
+  entityType String // "User", "Course", "Designation", ...
+  entityId   String?
+  summary    String // human-readable, rendered directly in the admin log
+  metaJson   String? // JSON blob of extra detail; no secrets, ever
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType, entityId])
 }
 
 // One row per learner x assignment — completion tracking
@@ -90,6 +156,7 @@ model Assessment {
   questions   AssessmentQuestion[]
   events      AssessmentEvent[]
   certificate Certificate?
+  results     AssessmentResult[]
 
   @@index([learnerId])
 }
@@ -115,6 +182,11 @@ model Certificate {
   @@index([learnerId])
 }
 
+// The attempt snapshot: a per-assessment copy of exactly what the candidate
+// saw, including the option order they were shown. This is the graded record
+// and stays authoritative even if the bank question is later edited or
+// retired. questionVersionId records which bank version it came from, for
+// provenance — it is a pointer, not the source of truth.
 model AssessmentQuestion {
   id              String  @id @default(cuid())
   assessmentId    String
@@ -124,10 +196,13 @@ model AssessmentQuestion {
   correctIndex    Int
   selectedIndex   Int? // learner's answer, null until submitted
   sourceModuleCode String // which module this question was drawn from
+  questionVersionId String?
 
-  assessment Assessment @relation(fields: [assessmentId], references: [id])
+  assessment      Assessment       @relation(fields: [assessmentId], references: [id])
+  questionVersion QuestionVersion? @relation(fields: [questionVersionId], references: [id])
 
   @@index([assessmentId])
+  @@index([questionVersionId])
 }
 
 // Anti-cheat signal log: tab-switch, fullscreen exit, copy/paste attempts, etc.
@@ -142,6 +217,120 @@ model AssessmentEvent {
   @@index([assessmentId])
 }
 
+// ---------------------------------------------------------------------------
+// Question bank
+//
+// A Question is a stable identity; its wording lives in QuestionVersion rows.
+// Editing never mutates a version — it appends a new one and moves the
+// current pointer. A test that was graded against version 2 keeps pointing at
+// version 2 forever, so fixing a typo in version 3 cannot retroactively change
+// anyone's past result.
+// ---------------------------------------------------------------------------
+model Question {
+  id          String         @id @default(cuid())
+  pillar      Pillar
+  moduleCode  String? // optional link to the curriculum module it tests
+  status      QuestionStatus @default(DRAFT)
+  // Which generator shape produced this ("topic", "standard", "pillar"), or
+  // null for a hand-written question. Combined with moduleCode it makes bulk
+  // generation idempotent: re-running skips module/shape pairs that already
+  // exist instead of duplicating the bank. Hand-written rows keep null here,
+  // and SQLite treats NULLs as distinct, so they never collide.
+  sourceShape String?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  module   Module?           @relation(fields: [moduleCode], references: [code])
+  versions QuestionVersion[]
+
+  @@unique([moduleCode, sourceShape])
+  @@index([pillar])
+  @@index([status])
+  @@index([moduleCode])
+}
+
+// One immutable revision of a question. Exactly one per question carries
+// isCurrent = true, enforced by a partial unique index in the migration.
+model QuestionVersion {
+  id           String   @id @default(cuid())
+  questionId   String
+  version      Int
+  questionText String
+  optionsJson  String // JSON-encoded array of option strings
+  correctIndex Int
+  explanation  String?
+  authorEmail  String // snapshotted, like AuditLog — survives author deletion
+  isCurrent    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  question Question             @relation(fields: [questionId], references: [id])
+  usages   AssessmentQuestion[]
+
+  @@unique([questionId, version])
+  @@index([questionId])
+}
+
+// ---------------------------------------------------------------------------
+// Assessment blueprints — the recipe for a test.
+// ---------------------------------------------------------------------------
+model AssessmentBlueprint {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  designationId   String? // null = applies to any designation
+  totalQuestions  Int      @default(25)
+  durationMinutes Int      @default(20)
+  passScore       Int      @default(15)
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  designation Designation?    @relation(fields: [designationId], references: [id])
+  items       BlueprintItem[]
+
+  @@index([designationId])
+}
+
+// How many questions the blueprint wants from one pillar. The sum of these
+// is checked against totalQuestions, and each is checked against how many
+// ACTIVE questions the bank actually holds — that comparison is the
+// bank-health warning.
+model BlueprintItem {
+  id          String @id @default(cuid())
+  blueprintId String
+  pillar      Pillar
+  count       Int
+
+  blueprint AssessmentBlueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
+
+  @@unique([blueprintId, pillar])
+}
+
+// ---------------------------------------------------------------------------
+// Append-only results.
+//
+// Grades are never overwritten. Auto-grading on submit inserts the first
+// record; a regrade inserts another that points at the one it replaces via
+// supersedesId, so the full history is recoverable by walking the chain. The
+// live result is the record nothing supersedes.
+// ---------------------------------------------------------------------------
+model AssessmentResult {
+  id              String        @id @default(cuid())
+  assessmentId    String
+  score           Int
+  totalQuestions  Int
+  outcome         ResultOutcome
+  reason          String // "Auto-graded on submit", "Regrade: ..."
+  supersedesId    String?       @unique
+  recordedByEmail String // snapshotted; "system" for automatic grading
+  createdAt       DateTime      @default(now())
+
+  assessment   Assessment        @relation(fields: [assessmentId], references: [id])
+  supersedes   AssessmentResult? @relation("ResultChain", fields: [supersedesId], references: [id])
+  supersededBy AssessmentResult? @relation("ResultChain")
+
+  @@index([assessmentId])
+}
+
 model Designation {
   id          String       @id @default(cuid())
   name        String       @unique
@@ -150,6 +339,8 @@ model Designation {
   assignments Assignment[]
   courses     CourseDesignation[]
   users       User[]
+  enrolments  Enrolment[]
+  blueprints  AssessmentBlueprint[]
 }
 
 model Module {
@@ -161,6 +352,7 @@ model Module {
   practicalOutput   String
   standard          String
   assignments       Assignment[]
+  questions         Question[]
 }
 
 // One row per Designation x Module pairing — the 8,032-row fact table

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit";
+import { openEnrolment } from "@/lib/enrolment";
 
 export async function setDesignationAction(formData: FormData) {
   const user = await requireUser();
@@ -18,8 +20,19 @@ export async function setDesignationAction(formData: FormData) {
   const designationId = String(formData.get("designationId") || "");
   if (!designationId) redirect("/account?error=" + encodeURIComponent("Pick a designation."));
 
-  await prisma.designation.findUniqueOrThrow({ where: { id: designationId } });
-  await prisma.user.update({ where: { id: user.id }, data: { designationId } });
+  const designation = await prisma.designation.findUniqueOrThrow({ where: { id: designationId } });
+
+  // openEnrolment sets user.designationId and opens the dated tenure record
+  // in one transaction.
+  await openEnrolment(user.id, designationId, "Chosen by the learner");
+
+  await recordAudit(user, {
+    action: AUDIT_ACTIONS.learnerEnrol,
+    entityType: "User",
+    entityId: user.id,
+    summary: `${user.name} enrolled in ${designation.name}`,
+    meta: { designationId },
+  });
 
   revalidatePath("/account");
   revalidatePath("/my-progress");

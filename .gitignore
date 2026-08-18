@@ -45,3 +45,7 @@ next-env.d.ts
 # database
 *.db
 *.db-journal
+
+# curriculum source data (workbook + the CSVs exported from it for scripts/etl.ts)
+*.xlsx
+IGS_Role_Based_Curriculum_and_Course_Library(*).csv

@@ -10,7 +10,7 @@ import { PrismaClient, Pillar } from "../src/generated/prisma/client";
 
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
 const prisma = new PrismaClient({ adapter });
-const ROOT = path.resolve(__dirname, "..", "..");
+const ROOT = path.resolve(__dirname, "..");
 
 const PILLAR_FILES: { file: string; pillar: Pillar; expectedAssignments: number }[] = [
   { file: "IGS_Role_Based_Curriculum_and_Course_Library(Process and Quality).csv", pillar: Pillar.PROCESS_AND_QUALITY, expectedAssignments: 1193 },

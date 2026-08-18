@@ -2,7 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { hashPassword, verifyPassword, setSessionCookie, clearSessionCookie } from "@/lib/auth";
+import {
+  hashPassword,
+  verifyPassword,
+  setSessionCookie,
+  clearSessionCookie,
+  getCurrentUser,
+} from "@/lib/auth";
+import { recordAudit, anonymousActor, AUDIT_ACTIONS } from "@/lib/audit";
 
 function fail(page: "signup" | "login", message: string): never {
   redirect(`/${page}?error=${encodeURIComponent(message)}`);
@@ -37,6 +44,14 @@ export async function signupAction(formData: FormData) {
     },
   });
 
+  await recordAudit(user, {
+    action: AUDIT_ACTIONS.authSignup,
+    entityType: "User",
+    entityId: user.id,
+    summary: `Bootstrapped the first administrator account (${email})`,
+    meta: { email },
+  });
+
   await setSessionCookie(user.id);
   redirect("/admin");
 }
@@ -47,14 +62,43 @@ export async function loginAction(formData: FormData) {
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    // Recorded against the address that was tried, whether or not it exists.
+    // The response to the user stays deliberately identical either way so
+    // this log doesn't become an account-enumeration oracle.
+    await recordAudit(anonymousActor(email), {
+      action: AUDIT_ACTIONS.authLoginFailed,
+      entityType: "User",
+      entityId: user?.id ?? null,
+      summary: `Failed sign-in attempt for ${email}`,
+      meta: { accountExists: Boolean(user) },
+    });
     fail("login", "Invalid email or password.");
   }
+
+  await recordAudit(user, {
+    action: AUDIT_ACTIONS.authLogin,
+    entityType: "User",
+    entityId: user.id,
+    summary: `${user.name} signed in`,
+  });
 
   await setSessionCookie(user.id);
   redirect(user.role === "ADMIN" ? "/admin" : "/my-progress");
 }
 
 export async function logoutAction() {
+  // Read the session before clearing it — afterwards there's no actor left
+  // to attribute the event to.
+  const user = await getCurrentUser();
+  if (user) {
+    await recordAudit(user, {
+      action: AUDIT_ACTIONS.authLogout,
+      entityType: "User",
+      entityId: user.id,
+      summary: `${user.name} signed out`,
+    });
+  }
+
   await clearSessionCookie();
   redirect("/");
 }

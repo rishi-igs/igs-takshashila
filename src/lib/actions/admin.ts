@@ -8,10 +8,11 @@ import { requireAdmin, hashPassword, generateTempPassword, setFlashCredentials }
 import { generateAssessmentQuestions } from "@/lib/assessment-generator";
 import { resolveBlueprint } from "@/lib/blueprint";
 import { selectFromBank, BankShortfallError } from "@/lib/bank-selection";
-import { getLearnerAssignmentFilter, getMandatoryAssignmentIds } from "@/lib/learner-curriculum";
+import { getLearnerAssignmentFilter } from "@/lib/learner-curriculum";
 import { CERTIFICATE_PASS_SCORE } from "@/lib/certificate";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit";
 import { openEnrolment } from "@/lib/enrolment";
+import { PILLAR_ORDER } from "@/lib/pillars";
 import type { Pillar } from "@/generated/prisma/enums";
 
 function generateCertificateNumber(): string {
@@ -186,44 +187,91 @@ export async function createAssessmentAction(formData: FormData) {
   redirect(`/admin/learners/${learnerId}?assessmentSent=1`);
 }
 
-// Reads the posted `assignmentId` checkboxes + `courseId_<id>` dropdowns from
-// a ModuleChecklistFields form, unions in every Mandatory-requirement
-// assignment for the designation (they can never be excluded), and resolves
-// each to a validated course pick (or null). Shared by learner creation and
-// the per-learner module checklist so both enforce the exact same rules.
+// Reads the posted `assignmentId` (hidden inputs — the course-access form
+// doesn't let admin change which modules a learner has, only pin courses to
+// each one) + `courseIds_<id>` checkbox groups from a ModuleChecklistFields
+// form, and resolves each to zero or more validated course picks. The
+// learner's module set itself was already decided at creation time; this
+// only ever narrows to assignments actually posted, never adds any.
 async function resolveModuleSelections(
   formData: FormData,
   designationId: string
-): Promise<{ assignmentId: string; courseId: string | null }[]> {
+): Promise<{ assignmentId: string; courseIds: string[] }[]> {
   const selectedAssignmentIds = formData.getAll("assignmentId").map(String);
-  const [validAssignments, mandatoryIds] = await Promise.all([
-    prisma.assignment.findMany({
-      where: { id: { in: selectedAssignmentIds }, designationId },
-      select: { id: true },
-    }),
-    getMandatoryAssignmentIds(designationId),
-  ]);
-  const finalIds = new Set([...validAssignments.map((a) => a.id), ...mandatoryIds]);
+  const validAssignments = await prisma.assignment.findMany({
+    where: { id: { in: selectedAssignmentIds }, designationId },
+    select: { id: true },
+  });
+  const finalIds = new Set(validAssignments.map((a) => a.id));
 
-  const postedCourseIdByAssignmentId = new Map<string, string>();
+  const postedCourseIdsByAssignmentId = new Map<string, string[]>();
   for (const assignmentId of finalIds) {
-    const courseId = String(formData.get(`courseId_${assignmentId}`) || "").trim();
-    if (courseId) postedCourseIdByAssignmentId.set(assignmentId, courseId);
+    const courseIds = formData.getAll(`courseIds_${assignmentId}`).map(String).filter(Boolean);
+    if (courseIds.length > 0) postedCourseIdsByAssignmentId.set(assignmentId, courseIds);
   }
-  const postedCourseIds = [...new Set(postedCourseIdByAssignmentId.values())];
+  const allPostedCourseIds = [...new Set([...postedCourseIdsByAssignmentId.values()].flat())];
   const validCourseIds =
-    postedCourseIds.length > 0
+    allPostedCourseIds.length > 0
       ? new Set(
-          (await prisma.course.findMany({ where: { id: { in: postedCourseIds } }, select: { id: true } })).map(
+          (await prisma.course.findMany({ where: { id: { in: allPostedCourseIds } }, select: { id: true } })).map(
             (c) => c.id
           )
         )
       : new Set<string>();
 
-  return [...finalIds].map((assignmentId) => {
-    const courseId = postedCourseIdByAssignmentId.get(assignmentId);
-    return { assignmentId, courseId: courseId && validCourseIds.has(courseId) ? courseId : null };
+  return [...finalIds].map((assignmentId) => ({
+    assignmentId,
+    courseIds: (postedCourseIdsByAssignmentId.get(assignmentId) ?? []).filter((id) => validCourseIds.has(id)),
+  }));
+}
+
+// Reads the posted `pillar` checkboxes (the "Select modules" dropdown) and
+// `courseIds_<assignmentId>` checkbox groups (the "Course access" dropdown)
+// from the create-learner form and decides the learner's curriculum. A
+// pillar being checked only makes its modules *eligible* — an eligible
+// module only actually makes it into the curriculum if it's Mandatory, or
+// the admin pinned a course to it. "Recommended", "Choose one" and
+// "Deployment-specific" modules are opt-in via a course pick, never included
+// just because their pillar is checked. This always produces an explicit
+// row set (never "no restriction, follow the designation as it evolves") —
+// that concept doesn't fit a default that's already narrower than "every
+// module in scope."
+async function resolveCreationSelections(
+  formData: FormData,
+  designationId: string
+): Promise<{ assignmentId: string; courseIds: string[] }[]> {
+  const selectedPillars = new Set(formData.getAll("pillar").map(String)) as Set<Pillar>;
+  const pillarRestricted = selectedPillars.size > 0 && selectedPillars.size < PILLAR_ORDER.length;
+
+  const allAssignments = await prisma.assignment.findMany({
+    where: { designationId },
+    select: { id: true, requirement: true, module: { select: { pillar: true } } },
   });
+  const pillarEligible = pillarRestricted
+    ? allAssignments.filter((a) => selectedPillars.has(a.module.pillar))
+    : allAssignments;
+
+  const postedCourseIdsByAssignmentId = new Map<string, string[]>();
+  for (const a of pillarEligible) {
+    const courseIds = formData.getAll(`courseIds_${a.id}`).map(String).filter(Boolean);
+    if (courseIds.length > 0) postedCourseIdsByAssignmentId.set(a.id, courseIds);
+  }
+  const allPostedCourseIds = [...new Set([...postedCourseIdsByAssignmentId.values()].flat())];
+  const validCourseIds =
+    allPostedCourseIds.length > 0
+      ? new Set(
+          (await prisma.course.findMany({ where: { id: { in: allPostedCourseIds } }, select: { id: true } })).map(
+            (c) => c.id
+          )
+        )
+      : new Set<string>();
+
+  return pillarEligible
+    .filter((a) => a.requirement === "Mandatory" || postedCourseIdsByAssignmentId.has(a.id))
+    .map((a) => ({
+      assignmentId: a.id,
+      courseIds: (postedCourseIdsByAssignmentId.get(a.id) ?? []).filter((id) => validCourseIds.has(id)),
+    }));
 }
 
 export async function createLearnerAction(formData: FormData) {
@@ -269,21 +317,28 @@ export async function createLearnerAction(formData: FormData) {
   if (designationId) {
     await openEnrolment(user.id, designationId, "Set at account creation");
 
-    const selections = await resolveModuleSelections(formData, designationId);
+    const selections = await resolveCreationSelections(formData, designationId);
+
     if (selections.length > 0) {
-      await prisma.learnerModule.createMany({
-        data: selections.map((s) => ({ userId: user.id, assignmentId: s.assignmentId, courseId: s.courseId })),
-      });
+      await prisma.$transaction(
+        selections.map((s) =>
+          prisma.learnerModule.create({
+            data: {
+              userId: user.id,
+              assignmentId: s.assignmentId,
+              courses: { create: s.courseIds.map((courseId) => ({ courseId })) },
+            },
+          })
+        )
+      );
     }
 
     await recordAudit(admin, {
       action: AUDIT_ACTIONS.learnerEnrol,
       entityType: "User",
       entityId: user.id,
-      summary: selections.length
-        ? `Enrolled ${name} in ${designationId}, restricted to ${selections.length} modules`
-        : `Enrolled ${name} in ${designationId}`,
-      meta: { designationId, restrictedModules: selections.length || null },
+      summary: `Enrolled ${name} in ${designationId} — ${selections.length} modules (mandatory + admin-selected courses)`,
+      meta: { designationId, moduleCount: selections.length },
     });
   }
 
@@ -303,15 +358,20 @@ export async function saveLearnerModulesAction(formData: FormData) {
 
   const selections = await resolveModuleSelections(formData, learner.designationId);
 
+  // createMany can't nest a relation write, and each module can carry
+  // several course picks now, so each selection is its own create with a
+  // nested LearnerModuleCourse write — still one transaction with the reset.
   await prisma.$transaction([
     prisma.learnerModule.deleteMany({ where: { userId: learnerId } }),
-    ...(selections.length > 0
-      ? [
-          prisma.learnerModule.createMany({
-            data: selections.map((s) => ({ userId: learnerId, assignmentId: s.assignmentId, courseId: s.courseId })),
-          }),
-        ]
-      : []),
+    ...selections.map((s) =>
+      prisma.learnerModule.create({
+        data: {
+          userId: learnerId,
+          assignmentId: s.assignmentId,
+          courses: { create: s.courseIds.map((courseId) => ({ courseId })) },
+        },
+      })
+    ),
   ]);
 
   revalidatePath(`/admin/learners/${learnerId}`);

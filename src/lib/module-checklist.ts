@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { PILLAR_ORDER } from "@/lib/pillars";
 import type { Pillar } from "@/generated/prisma/enums";
 
 export async function getModuleChecklistData(designationId: string) {
@@ -8,7 +7,7 @@ export async function getModuleChecklistData(designationId: string) {
       where: { designationId },
       include: { module: true },
     }),
-    prisma.course.findMany({ include: { pillars: true }, orderBy: { name: "asc" } }),
+    prisma.course.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const byPillar = new Map<Pillar, typeof assignments>();
@@ -21,15 +20,20 @@ export async function getModuleChecklistData(designationId: string) {
     list.sort((a, b) => a.module.name.localeCompare(b.module.name));
   }
 
-  // Courses tagged with a pillar are the most relevant match for a module in
-  // that pillar; fall back to the full library where nothing is tagged yet.
-  const coursesByPillar = new Map<Pillar, typeof courses>();
-  for (const pillar of PILLAR_ORDER) {
-    const tagged = courses.filter((c) => c.pillars.some((p) => p.pillar === pillar));
-    coursesByPillar.set(pillar, tagged.length > 0 ? tagged : courses);
+  // The Course Library's own "mapped curriculum modules" text names exactly
+  // which modules a course was built for (one module name per line) — match
+  // on that instead of a shared pillar tag, so each module only offers
+  // courses actually built for it, not every course in its pillar.
+  const coursesByModuleCode = new Map<string, typeof courses>();
+  for (const a of assignments) {
+    if (coursesByModuleCode.has(a.module.code)) continue;
+    const matches = courses.filter((c) =>
+      c.mappedModulesRaw.split("\n").some((line) => line.trim() === a.module.name)
+    );
+    coursesByModuleCode.set(a.module.code, matches);
   }
 
-  return { assignments, byPillar, coursesByPillar };
+  return { assignments, byPillar, coursesByModuleCode };
 }
 
 export type ModuleChecklistData = Awaited<ReturnType<typeof getModuleChecklistData>>;

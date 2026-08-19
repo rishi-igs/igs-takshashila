@@ -15,7 +15,7 @@ export type CurriculumRow = {
   freeLink: string | null;
   premiumLearning: string | null;
   premiumLink: string | null;
-  course: { name: string; provider: string; accessType: string; directLink: string | null } | null;
+  courses: { name: string; provider: string; accessType: string; directLink: string | null }[];
   status?: ProgressStatus;
 };
 
@@ -135,30 +135,36 @@ export default function CurriculumTable({
                       </td>
                       <td>
                         <div className="link-list">
-                          {r.course &&
-                            (r.course.directLink ? (
-                              <a href={r.course.directLink} target="_blank" rel="noreferrer">
-                                {r.course.accessType}: {r.course.name} ({r.course.provider})
-                              </a>
-                            ) : (
-                              <span className="muted">
-                                {r.course.accessType}: {r.course.name} ({r.course.provider})
-                              </span>
-                            ))}
-                          {r.freeLink ? (
-                            <a href={r.freeLink} target="_blank" rel="noreferrer">
-                              Free: {r.freeLearning || "Link"}
-                            </a>
-                          ) : r.freeLearning ? (
-                            <span className="muted">Free: {r.freeLearning}</span>
-                          ) : null}
-                          {r.premiumLink ? (
-                            <a href={r.premiumLink} target="_blank" rel="noreferrer">
-                              Premium: {r.premiumLearning || "Link"}
-                            </a>
-                          ) : r.premiumLearning ? (
-                            <span className="muted">Premium: {r.premiumLearning}</span>
-                          ) : null}
+                          {r.courses.length > 0 ? (
+                            r.courses.map((c, i) =>
+                              c.directLink ? (
+                                <a key={i} href={c.directLink} target="_blank" rel="noreferrer">
+                                  {c.accessType}: {c.name} ({c.provider})
+                                </a>
+                              ) : (
+                                <span key={i} className="muted">
+                                  {c.accessType}: {c.name} ({c.provider})
+                                </span>
+                              )
+                            )
+                          ) : (
+                            <>
+                              {r.freeLink ? (
+                                <a href={r.freeLink} target="_blank" rel="noreferrer">
+                                  Free: {r.freeLearning || "Link"}
+                                </a>
+                              ) : r.freeLearning ? (
+                                <span className="muted">Free: {r.freeLearning}</span>
+                              ) : null}
+                              {r.premiumLink ? (
+                                <a href={r.premiumLink} target="_blank" rel="noreferrer">
+                                  Premium: {r.premiumLearning || "Link"}
+                                </a>
+                              ) : r.premiumLearning ? (
+                                <span className="muted">Premium: {r.premiumLearning}</span>
+                              ) : null}
+                            </>
+                          )}
                         </div>
                       </td>
                       {showProgressColumn && (

@@ -930,7 +930,7 @@ button.danger:hover,
   color: var(--muted);
 }
 
-.auth-form input,
+.auth-form input:not([type="checkbox"]),
 .auth-form select {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -938,6 +938,18 @@ button.danger:hover,
   padding: 0.65rem 0.8rem;
   color: var(--foreground);
   font-size: 0.95rem;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Text/select inputs above target every non-checkbox input; checkboxes
+   nested inside .auth-form (pillar and course pickers) must stay their
+   native small size instead of stretching to the row's full width, which
+   otherwise pushes their label text onto the next line. */
+.auth-form input[type="checkbox"] {
+  width: auto;
+  min-width: 0;
+  accent-color: var(--accent);
 }
 
 .auth-form button {
@@ -949,6 +961,35 @@ button.danger:hover,
 .auth-form .muted {
   margin-top: 1.25rem;
   font-size: 0.88rem;
+}
+
+/* Wider variant for forms with several fields (e.g. create-learner) that
+   don't need to be squeezed into the narrow login/signup card width. */
+.auth-form.wide-form {
+  max-width: 840px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem 1.25rem;
+  align-items: start;
+}
+
+.field-row.field-row-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.field-row > label,
+.field-row > div {
+  min-width: 0;
+}
+
+@media (max-width: 680px) {
+  .field-row,
+  .field-row.field-row-2 {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------- callouts ---------- */
@@ -994,6 +1035,7 @@ button.danger:hover,
   font-size: 0.88rem;
   cursor: pointer;
   transition: border-color 0.12s ease;
+  min-width: 0;
 }
 
 .checklist-item:hover {
@@ -1006,6 +1048,14 @@ button.danger:hover,
   flex-shrink: 0;
 }
 
+.checklist-item select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.6rem;
+}
+
 .checklist-item.locked {
   cursor: default;
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
@@ -1014,6 +1064,86 @@ button.danger:hover,
 
 .checklist-item.locked input[type="checkbox"] {
   opacity: 0.7;
+}
+
+/* ---------- dropdown checklist (e.g. pillar picker) ---------- */
+
+.dropdown-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+.dropdown {
+  position: relative;
+}
+
+.dropdown summary {
+  list-style: none;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.65rem 0.8rem;
+  color: var(--foreground);
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  transition: border-color 0.15s ease;
+}
+
+.dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.dropdown summary::after {
+  content: "▾";
+  color: var(--muted);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.dropdown:hover summary,
+.dropdown[open] summary {
+  border-color: var(--accent);
+}
+
+.dropdown[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.dropdown-panel {
+  margin-top: 0.5rem;
+  padding: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.dropdown-panel .dropdown-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.dropdown-option input[type="checkbox"] {
+  accent-color: var(--accent);
+  flex-shrink: 0;
 }
 
 /* ---------- progress controls ---------- */

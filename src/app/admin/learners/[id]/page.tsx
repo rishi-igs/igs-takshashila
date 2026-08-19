@@ -217,16 +217,7 @@ export default async function AdminLearnerDetailPage({
       {!learner.designationId || !learner.designation ? (
         <p className="empty-state">This learner hasn&apos;t set a designation yet.</p>
       ) : (
-        <>
-          <a
-            href={`/admin/learners/${learner.id}/modules`}
-            className="button secondary"
-            style={{ marginBottom: "1.25rem" }}
-          >
-            Manage module access
-          </a>
-          <LearnerCurriculumSection userId={learner.id} designationId={learner.designationId} />
-        </>
+        <LearnerCurriculumSection userId={learner.id} designationId={learner.designationId} />
       )}
     </>
   );

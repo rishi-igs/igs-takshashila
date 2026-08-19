@@ -122,22 +122,35 @@ model AuditLog {
 // Per-learner module visibility override. If a learner has any rows here,
 // their curriculum is restricted to just those assignments; with none, they
 // see the full curriculum for their designation (the original behavior).
-// courseId lets admin pin a specific Course Library entry to this module for
-// this particular learner (mandatory modules only, chosen in the UI).
+// courses lets admin pin one or more Course Library entries to this module
+// for this particular learner, via LearnerModuleCourse.
 model LearnerModule {
   id           String   @id @default(cuid())
   userId       String
   assignmentId String
-  courseId     String?
   createdAt    DateTime @default(now())
 
-  user       User       @relation(fields: [userId], references: [id])
-  assignment Assignment @relation(fields: [assignmentId], references: [id])
-  course     Course?    @relation(fields: [courseId], references: [id])
+  user       User                  @relation(fields: [userId], references: [id])
+  assignment Assignment            @relation(fields: [assignmentId], references: [id])
+  courses    LearnerModuleCourse[]
 
   @@unique([userId, assignmentId])
   @@index([userId])
   @@index([assignmentId])
+}
+
+// One row per (LearnerModule, Course) pick — lets an admin assign more than
+// one course to the same learner's module.
+model LearnerModuleCourse {
+  id              String @id @default(cuid())
+  learnerModuleId String
+  courseId        String
+
+  learnerModule LearnerModule @relation(fields: [learnerModuleId], references: [id], onDelete: Cascade)
+  course        Course        @relation(fields: [courseId], references: [id])
+
+  @@unique([learnerModuleId, courseId])
+  @@index([learnerModuleId])
   @@index([courseId])
 }
 
@@ -414,7 +427,7 @@ model Course {
   pillars     CoursePillar[]
   roleStages  CourseRoleStage[]
   designations CourseDesignation[]
-  learnerModules LearnerModule[]
+  learnerModuleCourses LearnerModuleCourse[]
 }
 
 model CoursePillar {

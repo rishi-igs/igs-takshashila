@@ -2,129 +2,104 @@ import { requireAdminPage } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { createLearnerAction } from "@/lib/actions/admin";
 import { getModuleChecklistData } from "@/lib/module-checklist";
-import ModuleChecklistFields from "@/components/ModuleChecklistFields";
-
-// This page has two steps driven entirely by searchParams (name/email/
-// designationId) via a plain GET form — force dynamic rendering so each
-// step's query string always gets a fresh render, never a cached one.
-export const dynamic = "force-dynamic";
+import { CourseAccessDropdown } from "@/components/LearnerModuleDropdowns";
+import ModuleSelectDropdown from "@/components/ModuleSelectDropdown";
+import DesignationField from "@/components/DesignationField";
+import { PILLAR_ORDER } from "@/lib/pillars";
+import type { Pillar } from "@/generated/prisma/enums";
 
 export default async function NewLearnerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; name?: string; email?: string; designationId?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requireAdminPage();
-  const { error, name, email, designationId } = await searchParams;
+  const sp = await searchParams;
+  const error = typeof sp.error === "string" ? sp.error : undefined;
+  const name = typeof sp.name === "string" ? sp.name : "";
+  const email = typeof sp.email === "string" ? sp.email : "";
+  const designationId = typeof sp.designationId === "string" ? sp.designationId : "";
 
-  if (name && email) {
-    return <ModulesStep name={name} email={email} designationId={designationId || ""} error={error} />;
+  // Once any reload has happened (designation or pillar change), the pillar
+  // checkboxes' state is exactly whatever is in the query string — including
+  // zero, if every box ended up unchecked. Before the first reload, default
+  // to everything checked, matching the page's initial state.
+  const pillarsTouched = sp.pillarsTouched === "1";
+  const pillarRaw = sp.pillar;
+  const checkedPillars: Pillar[] = pillarsTouched
+    ? ((Array.isArray(pillarRaw) ? pillarRaw : pillarRaw ? [pillarRaw] : []) as Pillar[])
+    : [...PILLAR_ORDER];
+
+  const courseIdsByAssignmentId = new Map<string, string[]>();
+  for (const [key, value] of Object.entries(sp)) {
+    if (!key.startsWith("courseIds_") || !value) continue;
+    courseIdsByAssignmentId.set(key.slice("courseIds_".length), Array.isArray(value) ? value : [value]);
   }
 
   const designations = await prisma.designation.findMany({ orderBy: { name: "asc" } });
+  const selectedDesignation = designationId ? designations.find((d) => d.id === designationId) : undefined;
+  const checklistData = selectedDesignation ? await getModuleChecklistData(designationId) : null;
 
   return (
-    <div className="auth-form">
+    <div className="auth-form wide-form">
       <a href="/admin/learners" className="muted">
         ← Learners
       </a>
       <h1>Create learner</h1>
       <p className="subtitle">
-        Pick a designation to choose which modules this learner sees, and a course for each
-        mandatory one, on the next step. A password is generated automatically — you&apos;ll see
-        it once at the end.
-      </p>
-      {error && <p className="form-error">{error}</p>}
-      <form method="get" action="/admin/learners/new">
-        <label>
-          Name
-          <input type="text" name="name" required />
-        </label>
-        <label>
-          Email
-          <input type="email" name="email" required />
-        </label>
-        <label>
-          Designation (optional — the learner can set this later)
-          <select name="designationId" defaultValue="">
-            <option value="">Not set</option>
-            {designations.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit">Continue</button>
-      </form>
-    </div>
-  );
-}
-
-async function ModulesStep({
-  name,
-  email,
-  designationId,
-  error,
-}: {
-  name: string;
-  email: string;
-  designationId: string;
-  error?: string;
-}) {
-  const designation = designationId
-    ? await prisma.designation.findUnique({ where: { id: designationId } })
-    : null;
-
-  if (!designationId || !designation) {
-    return (
-      <div className="auth-form">
-        <a href="/admin/learners/new" className="muted">
-          ← Start over
-        </a>
-        <h1>Create learner</h1>
-        <p className="subtitle">
-          {name} · {email} · no designation set, so there&apos;s nothing to choose modules from yet
-          — the learner (or an admin) can set one later.
-        </p>
-        {error && <p className="form-error">{error}</p>}
-        <form action={createLearnerAction}>
-          <input type="hidden" name="name" value={name} />
-          <input type="hidden" name="email" value={email} />
-          <button type="submit">Create learner</button>
-        </form>
-      </div>
-    );
-  }
-
-  const data = await getModuleChecklistData(designationId);
-
-  return (
-    <>
-      <a href="/admin/learners/new" className="muted">
-        ← Start over
-      </a>
-      <h1>Modules for {name}</h1>
-      <p className="subtitle">
-        {email} · {designation.name}. Leave everything checked for the full curriculum, or uncheck
-        a module to hide it. Mandatory modules can&apos;t be excluded — pick a course for each from
-        its dropdown. A password is generated automatically — you&apos;ll see it once on the next
-        screen.
+        A password is generated automatically — you&apos;ll see it once on the next screen to pass
+        along to the learner.
       </p>
       {error && <p className="form-error">{error}</p>}
       <form action={createLearnerAction}>
-        <input type="hidden" name="name" value={name} />
-        <input type="hidden" name="email" value={email} />
-        <input type="hidden" name="designationId" value={designationId} />
-        {data.assignments.length === 0 ? (
-          <p className="empty-state">This designation has no modules assigned yet.</p>
-        ) : (
-          <ModuleChecklistFields data={data} selectedIds={null} courseIdByAssignmentId={new Map()} />
-        )}
-        <div style={{ marginTop: "1.5rem" }}>
+        <div className="field-row">
+          <label>
+            Name
+            <input type="text" name="name" defaultValue={name} required />
+          </label>
+          <label>
+            Email
+            <input type="email" name="email" defaultValue={email} required />
+          </label>
+          <label>
+            Designation
+            <DesignationField designations={designations} defaultValue={designationId} />
+            <span className="muted" style={{ fontWeight: 400, fontSize: "0.78rem" }}>
+              Optional — the learner can set this later.
+            </span>
+          </label>
+        </div>
+
+        <div className="field-row field-row-2">
+          <div>
+            <span className="dropdown-label">Select modules</span>
+            <ModuleSelectDropdown checkedPillars={checkedPillars} />
+          </div>
+
+          <div>
+            <span className="dropdown-label">Course access</span>
+            {!selectedDesignation ? (
+              <p className="muted" style={{ fontSize: "0.82rem" }}>
+                Pick a designation above to choose which course covers each module.
+              </p>
+            ) : !checklistData || checklistData.assignments.length === 0 ? (
+              <p className="muted" style={{ fontSize: "0.82rem" }}>
+                {selectedDesignation.name} has no modules assigned yet.
+              </p>
+            ) : (
+              <CourseAccessDropdown
+                data={checklistData}
+                checkedPillars={checkedPillars}
+                courseIdsByAssignmentId={courseIdsByAssignmentId}
+              />
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.25rem" }}>
           <button type="submit">Create learner</button>
         </div>
       </form>
-    </>
+    </div>
   );
 }

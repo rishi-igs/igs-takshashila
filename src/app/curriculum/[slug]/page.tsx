@@ -44,9 +44,9 @@ export default async function CurriculumPage({
       freeLink: a.freeLink,
       premiumLearning: a.premiumLearning,
       premiumLink: a.premiumLink,
-      // Course picks are per-learner (set from the admin's learner-modules
-      // checklist); this page has no single learner in view, so none apply.
-      course: null,
+      // Course picks are per-learner (set from the admin's Course access
+      // screen); this page has no single learner in view, so none apply.
+      courses: [],
       status: editable ? (a.progress?.[0]?.status as CurriculumRow["status"]) ?? "NOT_STARTED" : undefined,
     };
     const list = byPillar.get(a.module.pillar) ?? [];
